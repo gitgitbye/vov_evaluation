@@ -797,7 +797,11 @@ function loadEvaluateeOptions() {
 }
 
 // ===== 평가 제출 =====
+let _submittingEval = false;
 $("submitEvalBtn").addEventListener("click", () => {
+  // 리스너 이중 바인딩 / 더블클릭 시 같은 클릭에서 두 번 제출되는 것을 방지
+  // (disabled 세팅은 다음 이벤트부터 적용되므로 동기로 두 listener가 같이 도는 케이스를 못 막음)
+  if (_submittingEval) return;
   if (!currentRound) { toast("진행 중인 회차가 없습니다."); return; }
   const evaluator = (evalSession.evaluator || "").trim();
   const evaluateeId = $("evaluateeSel").value;
@@ -816,6 +820,7 @@ $("submitEvalBtn").addEventListener("click", () => {
     scores, total,
     timestamp: firebase.database.ServerValue.TIMESTAMP
   };
+  _submittingEval = true;
   $("submitEvalBtn").disabled = true;
   $("submitEvalBtn").textContent = "제출 중...";
   evaluationsRef().push(payload)
@@ -831,6 +836,7 @@ $("submitEvalBtn").addEventListener("click", () => {
       toast("제출 실패: " + err.message);
     })
     .finally(() => {
+      _submittingEval = false;
       $("submitEvalBtn").disabled = false;
       $("submitEvalBtn").textContent = "제출하기";
     });
