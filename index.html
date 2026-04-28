@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VoV 심의평가</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #2d3748;
+    min-height: 100vh;
+    padding: 16px;
+    -webkit-text-size-adjust: 100%;
+  }
+  .container { max-width: 560px; margin: 0 auto; }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 22px; margin-bottom: 6px; color: #1a202c; }
+  h2 { font-size: 18px; margin-bottom: 12px; color: #1a202c; }
+  h3 { font-size: 15px; margin-bottom: 8px; color: #4a5568; }
+  .subtitle { color: #718096; font-size: 13px; margin-bottom: 20px; }
+  label { display: block; font-size: 13px; color: #4a5568; margin-bottom: 6px; font-weight: 600; }
+  input[type=text], input[type=password], select {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 16px;
+    background: #fff;
+    color: #2d3748;
+    outline: none;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,.15); }
+  button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    transition: transform .1s, opacity .15s;
+  }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: #edf2f7; color: #2d3748; }
+  button.danger { background: #fed7d7; color: #9b2c2c; }
+  button.ghost { background: transparent; color: #667eea; padding: 8px; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .hidden { display: none !important; }
+  .item-block {
+    background: #f7fafc;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .item-title { font-weight: 700; color: #2d3748; margin-bottom: 4px; }
+  .item-desc { font-size: 12px; color: #718096; margin-bottom: 12px; }
+  .scale {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+  }
+  .scale label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 0;
+    cursor: pointer;
+    font-weight: 600;
+    color: #4a5568;
+    margin: 0;
+    font-size: 15px;
+  }
+  .scale input { display: none; }
+  .scale input:checked + span {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border-color: transparent;
+  }
+  .scale label span {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
+    padding: 12px 0;
+  }
+  .scale-hint { display: flex; justify-content: space-between; font-size: 11px; color: #a0aec0; margin-top: 6px; }
+  .toast {
+    position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
+    background: #2d3748; color: #fff; padding: 12px 20px; border-radius: 8px;
+    font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s;
+    z-index: 9999;
+  }
+  .toast.show { opacity: 1; }
+  .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .header-row h1, .header-row h2 { margin: 0; }
+  .tabs { display: flex; gap: 4px; background: #edf2f7; padding: 4px; border-radius: 10px; margin-bottom: 16px; }
+  .tab {
+    flex: 1; text-align: center; padding: 10px; font-size: 14px; font-weight: 600;
+    background: transparent; color: #718096; border-radius: 8px; cursor: pointer; border: none;
+  }
+  .tab.active { background: #fff; color: #2d3748; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
+  .list-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 14px; background: #f7fafc; border-radius: 10px; margin-bottom: 8px;
+  }
+  .list-item .name { font-weight: 600; }
+  .list-item .meta { font-size: 12px; color: #718096; }
+  .icon-btn { width: auto; padding: 6px 12px; font-size: 12px; }
+  .stat {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px; background: #f7fafc; border-radius: 10px; margin-bottom: 8px;
+  }
+  .rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #cbd5e0; color: #2d3748; font-weight: 700; font-size: 13px; margin-right: 10px;
+  }
+  .rank-badge.gold { background: #f6e05e; }
+  .rank-badge.silver { background: #cbd5e0; }
+  .rank-badge.bronze { background: #fbb284; }
+  .stat-row { display: flex; align-items: center; }
+  .stat-score { font-weight: 700; color: #667eea; font-size: 18px; }
+  .stat-count { font-size: 11px; color: #a0aec0; }
+  .empty { text-align: center; color: #a0aec0; padding: 30px 10px; font-size: 14px; }
+  .footer-note { text-align: center; font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 16px; }
+  .progress { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-bottom: 16px; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); transition: width .3s; }
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .detail-table th, .detail-table td { padding: 8px 6px; border-bottom: 1px solid #edf2f7; text-align: center; }
+  .detail-table th { background: #f7fafc; font-weight: 600; color: #4a5568; }
+  .detail-table td:first-child { text-align: left; font-weight: 600; }
+  details { background: #f7fafc; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+  details summary { cursor: pointer; font-weight: 600; outline: none; }
+  details summary::-webkit-details-marker { color: #667eea; }
+  .badge { display: inline-block; background: #e9d8fd; color: #6b46c1; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 로그인 화면 -->
+  <div id="loginScreen" class="card">
+    <h1>VoV 심의평가</h1>
+    <p class="subtitle">접속 비밀번호를 입력하세요.</p>
+    <label for="loginPw">비밀번호</label>
+    <input type="password" id="loginPw" inputmode="numeric" placeholder="비밀번호" autocomplete="off">
+    <div style="height:12px"></div>
+    <button id="loginBtn">입장하기</button>
+  </div>
+
+  <!-- 홈 화면 -->
+  <div id="homeScreen" class="card hidden">
+    <h1>VoV 심의평가</h1>
+    <p class="subtitle">아래에서 모드를 선택하세요.</p>
+    <button id="goEvalBtn">평가하기</button>
+    <div style="height:8px"></div>
+    <button id="goAdminBtn" class="secondary">관리자 모드</button>
+  </div>
+
+  <!-- 평가 화면 -->
+  <div id="evalScreen" class="hidden">
+    <div class="card">
+      <div class="header-row">
+        <h2>평가하기</h2>
+        <button class="ghost" id="evalBack" style="width:auto;">← 뒤로</button>
+      </div>
+      <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+
+      <label for="evaluator">평가자 이름</label>
+      <input type="text" id="evaluator" placeholder="본인 이름을 입력하세요">
+
+      <div style="height:12px"></div>
+
+      <label for="evaluateeSel">피평가자 선택</label>
+      <select id="evaluateeSel">
+        <option value="">— 선택하세요 —</option>
+      </select>
+      <p id="noEvaluateeMsg" class="empty hidden" style="padding:10px 0 0;">
+        등록된 피평가자가 없습니다.<br>관리자에게 문의하세요.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>1. 공적 내용</h3>
+      <div id="group1"></div>
+    </div>
+
+    <div class="card">
+      <h3>2. 개인 공적</h3>
+      <div id="group2"></div>
+    </div>
+
+    <div class="card">
+      <button id="submitEvalBtn">제출하기</button>
+    </div>
+  </div>
+
+  <!-- 관리자 PIN -->
+  <div id="adminPinScreen" class="card hidden">
+    <div class="header-row">
+      <h2>관리자 인증</h2>
+      <button class="ghost" id="adminPinBack" style="width:auto;">← 뒤로</button>
+    </div>
+    <p class="subtitle">관리자 PIN을 입력하세요.</p>
+    <input type="password" id="adminPin" placeholder="관리자 PIN" autocomplete="off">
+    <div style="height:12px"></div>
+    <button id="adminPinBtn">확인</button>
+  </div>
+
+  <!-- 관리자 화면 -->
+  <div id="adminScreen" class="hidden">
+    <div class="card">
+      <div class="header-row">
+        <h2>관리자 모드</h2>
+        <button class="ghost" id="adminBack" style="width:auto;">← 뒤로</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="people">피평가자 관리</button>
+        <button class="tab" data-tab="results">결과 집계</button>
+      </div>
+
+      <!-- 피평가자 관리 탭 -->
+      <div id="tab-people">
+        <label for="newName">피평가자 추가</label>
+        <div class="row">
+          <input type="text" id="newName" placeholder="이름 입력">
+          <button id="addPersonBtn" style="flex:0 0 80px;">추가</button>
+        </div>
+        <div style="height:16px"></div>
+        <h3>등록된 피평가자</h3>
+        <div id="peopleList"></div>
+      </div>
+
+      <!-- 결과 집계 탭 -->
+      <div id="tab-results" class="hidden">
+        <div class="row">
+          <button id="downloadXlsxBtn" class="secondary">엑셀 다운로드</button>
+          <button id="refreshResultsBtn" class="secondary">새로고침</button>
+        </div>
+        <div style="height:8px"></div>
+        <button id="clearAllBtn" class="danger">전체 평가 데이터 삭제</button>
+        <div style="height:16px"></div>
+        <h3>순위 (총점 평균 기준)</h3>
+        <div id="rankList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">VoV 심의평가 · 2026</div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- Firebase + SheetJS -->
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+
+<script>
+// ===== Firebase =====
+const firebaseConfig = {
+  apiKey: "AIzaSyBkpF_dGy8nvl5cbC9rFYG2coU1C9iIJms",
+  authDomain: "vov-evaluation.firebaseapp.com",
+  databaseURL: "https://vov-evaluation-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "vov-evaluation",
+  storageBucket: "vov-evaluation.firebasestorage.app",
+  messagingSenderId: "924215075182",
+  appId: "1:924215075182:web:c6292cd60ecec40087e17f"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ===== 상수 =====
+const ACCESS_PW = "2026";
+const ADMIN_PIN = "vov2026";
+
+const ITEMS = [
+  { group: 1, key: "appropriateness", label: "적절성", desc: "공적이 평가 기준과 목적에 부합하는 정도" },
+  { group: 1, key: "effectiveness",   label: "효과성", desc: "공적이 가져온 실질적인 성과의 정도" },
+  { group: 1, key: "difficulty",      label: "난이도", desc: "공적을 달성하기까지의 난이도" },
+  { group: 1, key: "novelty",         label: "참신성", desc: "공적의 독창성·새로움" },
+  { group: 2, key: "initiative",      label: "주도성", desc: "스스로 이끌고 추진한 정도" },
+  { group: 2, key: "persistence",     label: "지속성", desc: "꾸준히 이어온 정도" },
+  { group: 2, key: "influence",       label: "영향력", desc: "주변·조직에 끼친 긍정적 영향" }
+];
+
+// ===== 유틸 =====
+const $ = (id) => document.getElementById(id);
+function show(id) { $(id).classList.remove("hidden"); }
+function hide(id) { $(id).classList.add("hidden"); }
+function showOnly(id) {
+  ["loginScreen","homeScreen","evalScreen","adminPinScreen","adminScreen"].forEach(s =>
+    s === id ? show(s) : hide(s)
+  );
+  window.scrollTo(0, 0);
+}
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove("show"), 2000);
+}
+
+// ===== 로그인 =====
+$("loginBtn").addEventListener("click", () => {
+  if ($("loginPw").value === ACCESS_PW) {
+    showOnly("homeScreen");
+  } else {
+    toast("비밀번호가 올바르지 않습니다.");
+  }
+});
+$("loginPw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("loginBtn").click(); });
+
+// ===== 홈 =====
+$("goEvalBtn").addEventListener("click", () => { renderEvalForm(); showOnly("evalScreen"); });
+$("goAdminBtn").addEventListener("click", () => { $("adminPin").value = ""; showOnly("adminPinScreen"); });
+$("evalBack").addEventListener("click", () => showOnly("homeScreen"));
+$("adminPinBack").addEventListener("click", () => showOnly("homeScreen"));
+$("adminBack").addEventListener("click", () => showOnly("homeScreen"));
+
+// ===== 관리자 PIN =====
+$("adminPinBtn").addEventListener("click", () => {
+  if ($("adminPin").value === ADMIN_PIN) {
+    showOnly("adminScreen");
+    activateTab("people");
+    loadPeopleList();
+  } else {
+    toast("PIN이 올바르지 않습니다.");
+  }
+});
+$("adminPin").addEventListener("keydown", (e) => { if (e.key === "Enter") $("adminPinBtn").click(); });
+
+// ===== 평가 폼 렌더링 =====
+function renderEvalForm() {
+  $("evaluator").value = "";
+  $("evaluateeSel").value = "";
+  // 그룹 렌더
+  ["group1","group2"].forEach(g => $(g).innerHTML = "");
+  ITEMS.forEach((it, idx) => {
+    const wrap = document.createElement("div");
+    wrap.className = "item-block";
+    let scaleHtml = '<div class="scale">';
+    for (let i = 1; i <= 5; i++) {
+      scaleHtml += `<label>
+        <input type="radio" name="score_${it.key}" value="${i}">
+        <span>${i}</span>
+      </label>`;
+    }
+    scaleHtml += '</div><div class="scale-hint"><span>매우 낮음</span><span>매우 높음</span></div>';
+    wrap.innerHTML = `
+      <div class="item-title">${idx + 1}. ${it.label}</div>
+      <div class="item-desc">${it.desc}</div>
+      ${scaleHtml}
+    `;
+    $(it.group === 1 ? "group1" : "group2").appendChild(wrap);
+  });
+  // 진행률 계산을 위해 변경 감지
+  document.querySelectorAll('input[type=radio]').forEach(r => {
+    r.addEventListener("change", updateProgress);
+  });
+  $("evaluator").addEventListener("input", updateProgress);
+  $("evaluateeSel").addEventListener("change", updateProgress);
+  loadEvaluateeOptions();
+  updateProgress();
+}
+function updateProgress() {
+  let filled = 0;
+  if ($("evaluator").value.trim()) filled++;
+  if ($("evaluateeSel").value) filled++;
+  ITEMS.forEach(it => {
+    if (document.querySelector(`input[name=score_${it.key}]:checked`)) filled++;
+  });
+  const total = 2 + ITEMS.length;
+  $("progressBar").style.width = Math.round((filled / total) * 100) + "%";
+}
+
+// ===== 피평가자 목록 로드 (평가 화면) =====
+function loadEvaluateeOptions() {
+  const sel = $("evaluateeSel");
+  sel.innerHTML = '<option value="">— 선택하세요 —</option>';
+  $("noEvaluateeMsg").classList.add("hidden");
+  db.ref("evaluatees").once("value").then(snap => {
+    const data = snap.val() || {};
+    const ids = Object.keys(data);
+    if (ids.length === 0) {
+      $("noEvaluateeMsg").classList.remove("hidden");
+      return;
+    }
+    ids.sort((a,b) => (data[a].name||"").localeCompare(data[b].name||"", "ko"));
+    ids.forEach(id => {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = data[id].name || "(이름 없음)";
+      sel.appendChild(opt);
+    });
+  }).catch(err => {
+    console.error(err);
+    toast("피평가자 목록을 불러오지 못했습니다.");
+  });
+}
+
+// ===== 평가 제출 =====
+$("submitEvalBtn").addEventListener("click", () => {
+  const evaluator = $("evaluator").value.trim();
+  const evaluateeId = $("evaluateeSel").value;
+  const evaluateeName = $("evaluateeSel").selectedOptions[0]?.textContent || "";
+  if (!evaluator) { toast("평가자 이름을 입력하세요."); $("evaluator").focus(); return; }
+  if (!evaluateeId) { toast("피평가자를 선택하세요."); return; }
+  const scores = {};
+  for (const it of ITEMS) {
+    const v = document.querySelector(`input[name=score_${it.key}]:checked`);
+    if (!v) { toast(`"${it.label}" 점수를 선택하세요.`); return; }
+    scores[it.key] = parseInt(v.value, 10);
+  }
+  const total = Object.values(scores).reduce((a,b) => a+b, 0);
+  const payload = {
+    evaluator, evaluateeId, evaluateeName,
+    scores, total,
+    timestamp: firebase.database.ServerValue.TIMESTAMP
+  };
+  $("submitEvalBtn").disabled = true;
+  $("submitEvalBtn").textContent = "제출 중...";
+  db.ref("evaluations").push(payload)
+    .then(() => {
+      toast("제출되었습니다. 감사합니다!");
+      setTimeout(() => showOnly("homeScreen"), 800);
+    })
+    .catch(err => {
+      console.error(err);
+      toast("제출 실패: " + err.message);
+    })
+    .finally(() => {
+      $("submitEvalBtn").disabled = false;
+      $("submitEvalBtn").textContent = "제출하기";
+    });
+});
+
+// ===== 관리자 탭 전환 =====
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => activateTab(btn.dataset.tab));
+});
+function activateTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+  $("tab-people").classList.toggle("hidden", name !== "people");
+  $("tab-results").classList.toggle("hidden", name !== "results");
+  if (name === "people") loadPeopleList();
+  if (name === "results") loadResults();
+}
+
+// ===== 피평가자 관리 =====
+$("addPersonBtn").addEventListener("click", () => {
+  const name = $("newName").value.trim();
+  if (!name) { toast("이름을 입력하세요."); return; }
+  db.ref("evaluatees").push({ name }).then(() => {
+    $("newName").value = "";
+    toast("추가되었습니다.");
+    loadPeopleList();
+  }).catch(err => toast("추가 실패: " + err.message));
+});
+$("newName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("addPersonBtn").click(); });
+
+function loadPeopleList() {
+  const list = $("peopleList");
+  list.innerHTML = '<div class="empty">불러오는 중...</div>';
+  db.ref("evaluatees").once("value").then(snap => {
+    const data = snap.val() || {};
+    const ids = Object.keys(data);
+    if (ids.length === 0) {
+      list.innerHTML = '<div class="empty">등록된 피평가자가 없습니다.</div>';
+      return;
+    }
+    ids.sort((a,b) => (data[a].name||"").localeCompare(data[b].name||"", "ko"));
+    list.innerHTML = "";
+    ids.forEach(id => {
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.innerHTML = `
+        <span class="name">${escapeHtml(data[id].name || "")}</span>
+        <button class="danger icon-btn" data-id="${id}">삭제</button>
+      `;
+      row.querySelector("button").addEventListener("click", () => {
+        if (!confirm(`"${data[id].name}" 을(를) 삭제하시겠습니까?\n해당 피평가자에 대한 기존 평가는 그대로 남습니다.`)) return;
+        db.ref("evaluatees/" + id).remove().then(() => {
+          toast("삭제되었습니다.");
+          loadPeopleList();
+        });
+      });
+      list.appendChild(row);
+    });
+  });
+}
+
+// ===== 결과 집계 =====
+$("refreshResultsBtn").addEventListener("click", loadResults);
+$("clearAllBtn").addEventListener("click", () => {
+  if (!confirm("모든 평가 데이터를 삭제할까요?\n(피평가자 명단은 유지됩니다.)")) return;
+  if (!confirm("정말 되돌릴 수 없습니다. 계속할까요?")) return;
+  db.ref("evaluations").remove().then(() => {
+    toast("평가 데이터를 모두 삭제했습니다.");
+    loadResults();
+  });
+});
+
+let lastResults = null;
+
+function loadResults() {
+  const list = $("rankList");
+  list.innerHTML = '<div class="empty">불러오는 중...</div>';
+  db.ref("evaluations").once("value").then(snap => {
+    const data = snap.val() || {};
+    const evals = Object.values(data);
+    if (evals.length === 0) {
+      list.innerHTML = '<div class="empty">제출된 평가가 없습니다.</div>';
+      lastResults = { evals: [], grouped: {} };
+      return;
+    }
+    // 피평가자별 그룹
+    const grouped = {};
+    evals.forEach(e => {
+      const key = e.evaluateeId || ("name:" + e.evaluateeName);
+      if (!grouped[key]) {
+        grouped[key] = { name: e.evaluateeName, items: [] };
+      }
+      grouped[key].items.push(e);
+    });
+    // 평균 계산
+    const rows = Object.entries(grouped).map(([key, g]) => {
+      const itemAvgs = {};
+      ITEMS.forEach(it => {
+        const vals = g.items.map(x => (x.scores||{})[it.key]).filter(v => typeof v === "number");
+        itemAvgs[it.key] = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : 0;
+      });
+      const totals = g.items.map(x => x.total).filter(v => typeof v === "number");
+      const totalAvg = totals.length ? totals.reduce((a,b)=>a+b,0) / totals.length : 0;
+      return { key, name: g.name, count: g.items.length, totalAvg, itemAvgs, items: g.items };
+    });
+    rows.sort((a,b) => b.totalAvg - a.totalAvg);
+    lastResults = { evals, grouped, rows };
+
+    list.innerHTML = "";
+    rows.forEach((r, idx) => {
+      const rank = idx + 1;
+      const badgeClass = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
+      const det = document.createElement("details");
+      det.innerHTML = `
+        <summary>
+          <span class="rank-badge ${badgeClass}">${rank}</span>
+          <strong>${escapeHtml(r.name)}</strong>
+          <span class="badge">${r.count}건</span>
+          <span style="float:right;" class="stat-score">${r.totalAvg.toFixed(2)}</span>
+        </summary>
+        <table class="detail-table">
+          <thead><tr><th>항목</th><th>평균</th></tr></thead>
+          <tbody>
+            ${ITEMS.map(it => `<tr><td>${it.label}</td><td>${r.itemAvgs[it.key].toFixed(2)}</td></tr>`).join("")}
+            <tr><td><strong>총점 평균</strong></td><td><strong>${r.totalAvg.toFixed(2)}</strong> / 35</td></tr>
+          </tbody>
+        </table>
+        <div style="margin-top:10px;font-size:12px;color:#718096;">
+          평가자: ${[...new Set(r.items.map(x => x.evaluator))].map(escapeHtml).join(", ")}
+        </div>
+      `;
+      list.appendChild(det);
+    });
+  }).catch(err => {
+    console.error(err);
+    list.innerHTML = '<div class="empty">불러오기 실패</div>';
+  });
+}
+
+// ===== 엑셀 다운로드 =====
+$("downloadXlsxBtn").addEventListener("click", () => {
+  if (!lastResults || !lastResults.rows || lastResults.rows.length === 0) {
+    toast("다운로드할 데이터가 없습니다."); return;
+  }
+  const wb = XLSX.utils.book_new();
+
+  // 시트1: 순위/평균
+  const summaryHeader = ["순위","피평가자","평가건수", ...ITEMS.map(it => it.label + " 평균"), "총점 평균"];
+  const summaryRows = lastResults.rows.map((r, idx) => [
+    idx + 1, r.name, r.count,
+    ...ITEMS.map(it => Number(r.itemAvgs[it.key].toFixed(2))),
+    Number(r.totalAvg.toFixed(2))
+  ]);
+  const ws1 = XLSX.utils.aoa_to_sheet([summaryHeader, ...summaryRows]);
+  ws1["!cols"] = [{wch:6},{wch:14},{wch:8}, ...ITEMS.map(()=>({wch:12})), {wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws1, "순위·평균");
+
+  // 시트2: 원본
+  const detailHeader = ["제출시각","평가자","피평가자", ...ITEMS.map(it => it.label), "총점"];
+  const detailRows = lastResults.evals
+    .slice()
+    .sort((a,b) => (a.timestamp||0) - (b.timestamp||0))
+    .map(e => [
+      e.timestamp ? new Date(e.timestamp).toLocaleString("ko-KR") : "",
+      e.evaluator || "",
+      e.evaluateeName || "",
+      ...ITEMS.map(it => (e.scores||{})[it.key] ?? ""),
+      e.total ?? ""
+    ]);
+  const ws2 = XLSX.utils.aoa_to_sheet([detailHeader, ...detailRows]);
+  ws2["!cols"] = [{wch:20},{wch:12},{wch:14}, ...ITEMS.map(()=>({wch:8})), {wch:8}];
+  XLSX.utils.book_append_sheet(wb, ws2, "전체 응답");
+
+  const today = new Date();
+  const stamp = today.getFullYear() + "-" +
+    String(today.getMonth()+1).padStart(2,"0") + "-" +
+    String(today.getDate()).padStart(2,"0");
+  XLSX.writeFile(wb, `VoV_심의평가_${stamp}.xlsx`);
+});
+
+// ===== 유틸 =====
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+// 시작
+showOnly("loginScreen");
+</script>
+</body>
+</html>
