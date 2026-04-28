@@ -173,19 +173,43 @@
     <button id="goAdminBtn" class="secondary">관리자 모드</button>
   </div>
 
+  <!-- 평가자 이름 입력 화면 (회차 시작 시 한 번만) -->
+  <div id="evaluatorEntryScreen" class="hidden">
+    <div class="card">
+      <div class="header-row">
+        <h2>심의 시작 <span id="entryRoundBadge" class="badge hidden"></span></h2>
+        <button class="ghost" id="entryBack" style="width:auto;">← 뒤로</button>
+      </div>
+      <p class="subtitle">먼저 본인 이름을 입력하세요. 입력한 이름으로 여러 피평가자를 이어서 심의합니다.</p>
+      <p id="entryNoRoundMsg" class="empty hidden" style="padding:10px 0;">
+        진행 중인 평가 회차가 없습니다.<br>관리자에게 문의하세요.
+      </p>
+      <label for="evaluatorName">평가자 이름</label>
+      <input type="text" id="evaluatorName" placeholder="본인 이름을 입력하세요">
+      <div style="height:14px"></div>
+      <button id="startEvalBtn">심의 시작하기</button>
+    </div>
+  </div>
+
   <!-- 평가 화면 -->
   <div id="evalScreen" class="hidden">
     <div class="card">
       <div class="header-row">
-        <h2>평가하기</h2>
+        <h2>평가하기 <span id="evalRoundBadge" class="badge hidden"></span></h2>
         <button class="ghost" id="evalBack" style="width:auto;">← 뒤로</button>
       </div>
+      <p id="evalNoRoundMsg" class="empty hidden" style="padding:10px 0;">
+        진행 중인 평가 회차가 없습니다.<br>관리자에게 문의하세요.
+      </p>
       <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
 
-      <label for="evaluator">평가자 이름</label>
-      <input type="text" id="evaluator" placeholder="본인 이름을 입력하세요">
-
-      <div style="height:12px"></div>
+      <div id="evaluatorInfo" style="background:#f7fafc;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:11px;color:#718096;">평가자</div>
+          <div id="evaluatorInfoName" style="font-weight:700;color:#2d3748;font-size:15px;">—</div>
+        </div>
+        <button id="changeEvaluatorBtn" class="ghost" style="width:auto;font-size:12px;">변경</button>
+      </div>
 
       <label for="evaluateeSel">피평가자 선택</label>
       <select id="evaluateeSel">
@@ -193,6 +217,9 @@
       </select>
       <p id="noEvaluateeMsg" class="empty hidden" style="padding:10px 0 0;">
         등록된 피평가자가 없습니다.<br>관리자에게 문의하세요.
+      </p>
+      <p id="allDoneMsg" class="empty hidden" style="padding:10px 0 0;">
+        이번 세션에서 등록된 모든 피평가자에 대한 심의를 완료했습니다.
       </p>
     </div>
 
@@ -208,6 +235,21 @@
 
     <div class="card">
       <button id="submitEvalBtn">제출하기</button>
+    </div>
+  </div>
+
+  <!-- 제출 완료 화면 -->
+  <div id="submittedScreen" class="hidden">
+    <div class="card" style="text-align:center;">
+      <div style="font-size:42px;margin-bottom:8px;">✓</div>
+      <h2 style="margin-bottom:8px;">제출되었습니다</h2>
+      <p class="subtitle" id="submittedInfo" style="margin-bottom:20px;">
+        평가가 정상적으로 저장되었습니다.
+      </p>
+      <div id="sessionStats" style="background:#f7fafc;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:#4a5568;"></div>
+      <button id="nextEvalBtn">다음 심의로 넘어가기</button>
+      <div style="height:8px"></div>
+      <button id="finishEvalBtn" class="secondary">평가 종료</button>
     </div>
   </div>
 
@@ -230,9 +272,20 @@
         <h2>관리자 모드</h2>
         <button class="ghost" id="adminBack" style="width:auto;">← 뒤로</button>
       </div>
+
+      <!-- 현재 회차 박스 -->
+      <div id="currentRoundBox" style="background:#f7fafc;border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:12px;color:#718096;margin-bottom:4px;">현재 회차</div>
+        <div id="currentRoundLabel" style="font-weight:700;font-size:16px;color:#2d3748;">—</div>
+        <div id="currentRoundMeta" style="font-size:12px;color:#a0aec0;margin-top:2px;"></div>
+        <div style="height:10px"></div>
+        <button id="newRoundBtn" class="secondary">새 회차 시작</button>
+      </div>
+
       <div class="tabs">
         <button class="tab active" data-tab="people">피평가자 관리</button>
         <button class="tab" data-tab="results">결과 집계</button>
+        <button class="tab" data-tab="history">지난 회차</button>
       </div>
 
       <!-- 피평가자 관리 탭 -->
@@ -242,8 +295,11 @@
           <input type="text" id="newName" placeholder="이름 입력">
           <button id="addPersonBtn" style="flex:0 0 80px;">추가</button>
         </div>
+        <p style="font-size:12px;color:#718096;margin-top:6px;">
+          여러 명을 한 번에 추가하려면 이름을 줄바꿈으로 구분해 입력하세요.
+        </p>
         <div style="height:16px"></div>
-        <h3>등록된 피평가자</h3>
+        <h3>등록된 피평가자 <span id="peopleCount" class="badge hidden"></span></h3>
         <div id="peopleList"></div>
       </div>
 
@@ -254,11 +310,51 @@
           <button id="refreshResultsBtn" class="secondary">새로고침</button>
         </div>
         <div style="height:8px"></div>
-        <button id="clearAllBtn" class="danger">전체 평가 데이터 삭제</button>
+        <button id="clearAllBtn" class="danger">현재 회차 평가 데이터 삭제</button>
         <div style="height:16px"></div>
         <h3>순위 (총점 평균 기준)</h3>
         <div id="rankList"></div>
       </div>
+
+      <!-- 지난 회차 탭 -->
+      <div id="tab-history" class="hidden">
+        <label for="historyRoundSel">회차 선택</label>
+        <select id="historyRoundSel">
+          <option value="">— 회차를 선택하세요 —</option>
+        </select>
+        <div style="height:12px"></div>
+        <div id="historyContent" class="hidden">
+          <div class="row">
+            <button id="historyXlsxBtn" class="secondary">엑셀 다운로드</button>
+            <button id="historyDeleteBtn" class="danger">이 회차 삭제</button>
+          </div>
+          <div style="height:16px"></div>
+          <h3>순위 (총점 평균 기준)</h3>
+          <div id="historyRankList"></div>
+        </div>
+        <p id="historyEmpty" class="empty">
+          종료된 지난 회차가 아직 없습니다.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 새 회차 시작 화면 -->
+  <div id="newRoundScreen" class="hidden">
+    <div class="card">
+      <div class="header-row">
+        <h2>새 회차 시작</h2>
+        <button class="ghost" id="newRoundBack" style="width:auto;">← 취소</button>
+      </div>
+      <p class="subtitle">새 회차를 시작하면 현재 회차는 "지난 회차"로 보관됩니다. 새 회차는 비어 있는 상태로 시작합니다.</p>
+      <label for="newRoundLabel">회차 이름</label>
+      <input type="text" id="newRoundLabel" placeholder="예: 2026년 5월">
+      <p style="font-size:12px;color:#718096;margin-top:6px;">
+        구분하기 쉽게 연/월 등을 입력하세요.
+      </p>
+      <div style="height:16px"></div>
+      <div id="newRoundCurrentInfo" style="background:#fff5f5;border-radius:10px;padding:12px;font-size:13px;color:#9b2c2c;margin-bottom:12px;display:none;"></div>
+      <button id="confirmNewRoundBtn">새 회차 시작</button>
     </div>
   </div>
 
@@ -267,12 +363,98 @@
 
 <div id="toast" class="toast"></div>
 
-<!-- Firebase + SheetJS -->
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-
 <script>
+// ===== 외부 라이브러리 동적 로더 (CDN 폴백 포함) =====
+(function bootLoader() {
+  const FIREBASE_CDNS = [
+    [
+      "https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js",
+      "https://www.gstatic.com/firebasejs/10.12.4/firebase-database-compat.js"
+    ],
+    [
+      "https://cdn.jsdelivr.net/npm/firebase@10.12.4/firebase-app-compat.min.js",
+      "https://cdn.jsdelivr.net/npm/firebase@10.12.4/firebase-database-compat.min.js"
+    ],
+    [
+      "https://unpkg.com/firebase@10.12.4/firebase-app-compat.js",
+      "https://unpkg.com/firebase@10.12.4/firebase-database-compat.js"
+    ]
+  ];
+  const SHEETJS_CDNS = [
+    "https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js",
+    "https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js",
+    "https://unpkg.com/xlsx@0.20.2/dist/xlsx.full.min.js"
+  ];
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = false;
+      s.onload = () => resolve(src);
+      s.onerror = () => reject(new Error("스크립트 로드 실패: " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function tryLoadFirebase() {
+    for (const pair of FIREBASE_CDNS) {
+      try {
+        await loadScript(pair[0]);
+        await loadScript(pair[1]);
+        if (typeof firebase !== "undefined" && firebase.database) return true;
+      } catch (e) {
+        console.warn("Firebase CDN 실패:", pair[0]);
+      }
+    }
+    return false;
+  }
+  async function tryLoadSheetJS() {
+    for (const url of SHEETJS_CDNS) {
+      try {
+        await loadScript(url);
+        if (typeof XLSX !== "undefined") return true;
+      } catch (e) {}
+    }
+    return false;
+  }
+
+  function renderLoadError() {
+    const c = document.querySelector(".container");
+    if (!c) return;
+    c.innerHTML = `
+      <div class="card">
+        <h1>연결 오류</h1>
+        <p class="subtitle">필요한 라이브러리를 불러오지 못했습니다.</p>
+        <p style="font-size:13px;color:#4a5568;line-height:1.7;">
+          이 앱은 Firebase 라이브러리가 필요합니다. 다음을 확인해주세요:
+        </p>
+        <ul style="font-size:13px;color:#4a5568;line-height:1.8;padding-left:20px;margin:8px 0 14px;">
+          <li>인터넷 연결 상태</li>
+          <li>광고 차단기 / 보안 확장 프로그램이 켜져 있는지</li>
+          <li>사내망 / VPN이 외부 CDN(gstatic.com, jsdelivr.net, unpkg.com)을 차단하는지</li>
+        </ul>
+        <button onclick="location.reload()">다시 시도</button>
+      </div>
+    `;
+  }
+
+  (async () => {
+    const okFb = await tryLoadFirebase();
+    if (!okFb) {
+      renderLoadError();
+      return;
+    }
+    await tryLoadSheetJS(); // 엑셀 다운로드는 실패해도 앱 자체는 동작하도록
+    if (typeof bootMain === "function") {
+      try { bootMain(); }
+      catch (e) { console.error(e); renderLoadError(); }
+    }
+  })();
+})();
+
+// ===== 메인 부트 (Firebase가 준비된 뒤 호출됨) =====
+function bootMain() {
 // ===== Firebase =====
 const firebaseConfig = {
   apiKey: "AIzaSyBkpF_dGy8nvl5cbC9rFYG2coU1C9iIJms",
@@ -305,10 +487,59 @@ const $ = (id) => document.getElementById(id);
 function show(id) { $(id).classList.remove("hidden"); }
 function hide(id) { $(id).classList.add("hidden"); }
 function showOnly(id) {
-  ["loginScreen","homeScreen","evalScreen","adminPinScreen","adminScreen"].forEach(s =>
+  ["loginScreen","homeScreen","evaluatorEntryScreen","evalScreen","submittedScreen","adminPinScreen","adminScreen","newRoundScreen"].forEach(s =>
     s === id ? show(s) : hide(s)
   );
   window.scrollTo(0, 0);
+}
+
+// ===== 평가 세션 상태 =====
+// 평가자 이름은 한 번만 받고, 같은 세션에서 여러 피평가자를 이어서 심의함.
+const evalSession = {
+  evaluator: "",            // 현재 세션 평가자 이름
+  evaluatedIds: new Set(),  // 이번 세션에서 이미 심의를 마친 피평가자 id들
+  lastEvaluateeName: ""     // 직전 제출한 피평가자 이름 (안내용)
+};
+function resetEvalSession() {
+  evalSession.evaluator = "";
+  evalSession.evaluatedIds = new Set();
+  evalSession.lastEvaluateeName = "";
+}
+
+// ===== 회차(Round) 상태 =====
+// Firebase 구조:
+//   meta/currentRoundId: "<roundId>"
+//   rounds/<roundId>: { label, startedAt, endedAt }
+//   rounds/<roundId>/evaluatees/<id>: { name }
+//   rounds/<roundId>/evaluations/<id>: { evaluator, evaluateeId, evaluateeName, scores, total, timestamp }
+let currentRound = null; // { id, label, startedAt, endedAt }
+
+function loadCurrentRound() {
+  return db.ref("meta/currentRoundId").once("value").then(snap => {
+    const rid = snap.val();
+    if (!rid) { currentRound = null; return null; }
+    return db.ref("rounds/" + rid).once("value").then(rSnap => {
+      const r = rSnap.val();
+      if (!r) { currentRound = null; return null; }
+      currentRound = { id: rid, label: r.label || "(이름 없음)", startedAt: r.startedAt || 0, endedAt: r.endedAt || null };
+      return currentRound;
+    });
+  });
+}
+
+function defaultRoundLabel() {
+  const d = new Date();
+  return d.getFullYear() + "년 " + (d.getMonth() + 1) + "월";
+}
+
+// 현재 회차의 피평가자/평가 노드 ref 도우미
+function evaluateesRef() {
+  if (!currentRound) return null;
+  return db.ref("rounds/" + currentRound.id + "/evaluatees");
+}
+function evaluationsRef() {
+  if (!currentRound) return null;
+  return db.ref("rounds/" + currentRound.id + "/evaluations");
 }
 function toast(msg) {
   const t = $("toast");
@@ -329,28 +560,159 @@ $("loginBtn").addEventListener("click", () => {
 $("loginPw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("loginBtn").click(); });
 
 // ===== 홈 =====
-$("goEvalBtn").addEventListener("click", () => { renderEvalForm(); showOnly("evalScreen"); });
+$("goEvalBtn").addEventListener("click", () => {
+  // 새로 진입할 때는 세션 초기화 후 이름 입력 화면으로
+  resetEvalSession();
+  loadCurrentRound().then(() => {
+    showEvaluatorEntry();
+  }).catch(err => {
+    console.error(err);
+    toast("회차 정보를 불러오지 못했습니다.");
+  });
+});
 $("goAdminBtn").addEventListener("click", () => { $("adminPin").value = ""; showOnly("adminPinScreen"); });
-$("evalBack").addEventListener("click", () => showOnly("homeScreen"));
+$("evalBack").addEventListener("click", () => {
+  // 뒤로 가도 세션 초기화 (이름 다시 받게)
+  resetEvalSession();
+  showOnly("homeScreen");
+});
 $("adminPinBack").addEventListener("click", () => showOnly("homeScreen"));
 $("adminBack").addEventListener("click", () => showOnly("homeScreen"));
 
+// ===== 평가자 이름 입력 화면 =====
+function showEvaluatorEntry() {
+  const badge = $("entryRoundBadge");
+  const noRoundMsg = $("entryNoRoundMsg");
+  if (currentRound) {
+    badge.textContent = currentRound.label;
+    badge.classList.remove("hidden");
+    noRoundMsg.classList.add("hidden");
+    $("startEvalBtn").disabled = false;
+  } else {
+    badge.classList.add("hidden");
+    noRoundMsg.classList.remove("hidden");
+    $("startEvalBtn").disabled = true;
+  }
+  $("evaluatorName").value = evalSession.evaluator || "";
+  showOnly("evaluatorEntryScreen");
+  setTimeout(() => $("evaluatorName").focus(), 50);
+}
+
+$("entryBack").addEventListener("click", () => {
+  resetEvalSession();
+  showOnly("homeScreen");
+});
+
+$("startEvalBtn").addEventListener("click", () => {
+  if (!currentRound) { toast("진행 중인 회차가 없습니다."); return; }
+  const name = $("evaluatorName").value.trim();
+  if (!name) { toast("평가자 이름을 입력하세요."); $("evaluatorName").focus(); return; }
+  evalSession.evaluator = name;
+  renderEvalForm();
+  showOnly("evalScreen");
+});
+
+$("evaluatorName").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("startEvalBtn").click();
+});
+
+// 평가 화면에서 "변경" 누르면 이름 입력 화면으로 (세션 초기화)
+$("changeEvaluatorBtn").addEventListener("click", () => {
+  if (!confirm("평가자를 변경하시겠습니까?\n이번 세션의 진행 상황(이미 심의한 피평가자 기록)이 초기화됩니다.")) return;
+  resetEvalSession();
+  showEvaluatorEntry();
+});
+
 // ===== 관리자 PIN =====
 $("adminPinBtn").addEventListener("click", () => {
-  if ($("adminPin").value === ADMIN_PIN) {
-    showOnly("adminScreen");
-    activateTab("people");
-    loadPeopleList();
-  } else {
-    toast("PIN이 올바르지 않습니다.");
-  }
+  if ($("adminPin").value !== ADMIN_PIN) { toast("PIN이 올바르지 않습니다."); return; }
+  loadCurrentRound().then(() => {
+    if (!currentRound) {
+      // 회차가 한 번도 없었으면 → 첫 회차 시작 화면으로
+      maybeMigrateLegacyAndStart();
+    } else {
+      enterAdmin();
+    }
+  }).catch(err => {
+    console.error(err);
+    toast("회차 정보를 불러오지 못했습니다.");
+  });
 });
 $("adminPin").addEventListener("keydown", (e) => { if (e.key === "Enter") $("adminPinBtn").click(); });
 
+function enterAdmin() {
+  showOnly("adminScreen");
+  renderCurrentRoundBox();
+  activateTab("people");
+  loadPeopleList();
+}
+
+function renderCurrentRoundBox() {
+  if (!currentRound) {
+    $("currentRoundLabel").textContent = "—";
+    $("currentRoundMeta").textContent = "회차가 시작되지 않았습니다.";
+    return;
+  }
+  $("currentRoundLabel").textContent = currentRound.label;
+  const started = currentRound.startedAt ? new Date(currentRound.startedAt).toLocaleString("ko-KR") : "";
+  $("currentRoundMeta").textContent = started ? `시작: ${started}` : "";
+}
+
+// 처음 진입 시 기존 데이터(레거시 evaluatees / evaluations)가 있으면
+// 첫 회차로 자동 이관할지 묻고, 없으면 그냥 새 회차 시작 화면으로 보냄.
+function maybeMigrateLegacyAndStart() {
+  Promise.all([
+    db.ref("evaluatees").once("value"),
+    db.ref("evaluations").once("value")
+  ]).then(([eeSnap, evSnap]) => {
+    const ee = eeSnap.val() || {};
+    const ev = evSnap.val() || {};
+    const hasLegacy = Object.keys(ee).length > 0 || Object.keys(ev).length > 0;
+    if (hasLegacy) {
+      const ok = confirm(
+        "이전 데이터가 발견되었습니다.\n첫 회차로 이관해서 보관할까요?\n\n" +
+        "확인 = 첫 회차로 이관 후 \"새 회차 시작\" 화면으로 이동\n" +
+        "취소 = 이전 데이터를 무시하고 새 회차부터 시작 (이전 데이터는 유지됨)"
+      );
+      if (ok) {
+        const legacyRoundId = "round_legacy_" + Date.now();
+        const payload = {
+          label: "이전 데이터(이관)",
+          startedAt: firebase.database.ServerValue.TIMESTAMP,
+          endedAt: firebase.database.ServerValue.TIMESTAMP,
+          evaluatees: ee,
+          evaluations: ev
+        };
+        db.ref("rounds/" + legacyRoundId).set(payload).then(() => {
+          // 레거시 노드는 보존(혹시 모를 사고 대비). currentRoundId는 아직 안 정함.
+          openNewRoundScreen();
+        }).catch(err => { console.error(err); toast("이관 실패"); });
+        return;
+      }
+    }
+    openNewRoundScreen();
+  });
+}
+
 // ===== 평가 폼 렌더링 =====
 function renderEvalForm() {
-  $("evaluator").value = "";
+  // 회차 표시 / 회차 없음 안내
+  const badge = $("evalRoundBadge");
+  const noRoundMsg = $("evalNoRoundMsg");
+  if (currentRound) {
+    badge.textContent = currentRound.label;
+    badge.classList.remove("hidden");
+    noRoundMsg.classList.add("hidden");
+  } else {
+    badge.classList.add("hidden");
+    noRoundMsg.classList.remove("hidden");
+  }
+
+  // 평가자 정보 박스 채우기 (이름은 시작 화면에서 이미 받았음)
+  $("evaluatorInfoName").textContent = evalSession.evaluator || "—";
   $("evaluateeSel").value = "";
+  $("submitEvalBtn").disabled = false;
+  $("submitEvalBtn").textContent = "제출하기";
   // 그룹 렌더
   ["group1","group2"].forEach(g => $(g).innerHTML = "");
   ITEMS.forEach((it, idx) => {
@@ -375,19 +737,17 @@ function renderEvalForm() {
   document.querySelectorAll('input[type=radio]').forEach(r => {
     r.addEventListener("change", updateProgress);
   });
-  $("evaluator").addEventListener("input", updateProgress);
   $("evaluateeSel").addEventListener("change", updateProgress);
   loadEvaluateeOptions();
   updateProgress();
 }
 function updateProgress() {
   let filled = 0;
-  if ($("evaluator").value.trim()) filled++;
   if ($("evaluateeSel").value) filled++;
   ITEMS.forEach(it => {
     if (document.querySelector(`input[name=score_${it.key}]:checked`)) filled++;
   });
-  const total = 2 + ITEMS.length;
+  const total = 1 + ITEMS.length;
   $("progressBar").style.width = Math.round((filled / total) * 100) + "%";
 }
 
@@ -396,7 +756,12 @@ function loadEvaluateeOptions() {
   const sel = $("evaluateeSel");
   sel.innerHTML = '<option value="">— 선택하세요 —</option>';
   $("noEvaluateeMsg").classList.add("hidden");
-  db.ref("evaluatees").once("value").then(snap => {
+  $("allDoneMsg").classList.add("hidden");
+  if (!currentRound) {
+    $("noEvaluateeMsg").classList.remove("hidden");
+    return;
+  }
+  evaluateesRef().once("value").then(snap => {
     const data = snap.val() || {};
     const ids = Object.keys(data);
     if (ids.length === 0) {
@@ -404,7 +769,13 @@ function loadEvaluateeOptions() {
       return;
     }
     ids.sort((a,b) => (data[a].name||"").localeCompare(data[b].name||"", "ko"));
-    ids.forEach(id => {
+    // 이번 세션에서 이미 심의한 사람은 제외 (중복 평가 방지)
+    const remaining = ids.filter(id => !evalSession.evaluatedIds.has(id));
+    if (remaining.length === 0) {
+      $("allDoneMsg").classList.remove("hidden");
+      return;
+    }
+    remaining.forEach(id => {
       const opt = document.createElement("option");
       opt.value = id;
       opt.textContent = data[id].name || "(이름 없음)";
@@ -418,10 +789,11 @@ function loadEvaluateeOptions() {
 
 // ===== 평가 제출 =====
 $("submitEvalBtn").addEventListener("click", () => {
-  const evaluator = $("evaluator").value.trim();
+  if (!currentRound) { toast("진행 중인 회차가 없습니다."); return; }
+  const evaluator = (evalSession.evaluator || "").trim();
   const evaluateeId = $("evaluateeSel").value;
   const evaluateeName = $("evaluateeSel").selectedOptions[0]?.textContent || "";
-  if (!evaluator) { toast("평가자 이름을 입력하세요."); $("evaluator").focus(); return; }
+  if (!evaluator) { toast("평가자 이름이 비어있습니다. 다시 시작해주세요."); showEvaluatorEntry(); return; }
   if (!evaluateeId) { toast("피평가자를 선택하세요."); return; }
   const scores = {};
   for (const it of ITEMS) {
@@ -437,10 +809,13 @@ $("submitEvalBtn").addEventListener("click", () => {
   };
   $("submitEvalBtn").disabled = true;
   $("submitEvalBtn").textContent = "제출 중...";
-  db.ref("evaluations").push(payload)
+  evaluationsRef().push(payload)
     .then(() => {
-      toast("제출되었습니다. 감사합니다!");
-      setTimeout(() => showOnly("homeScreen"), 800);
+      // 세션 상태 업데이트: 평가자 이름 고정, 완료한 피평가자 기록
+      evalSession.evaluator = evaluator;
+      evalSession.evaluatedIds.add(evaluateeId);
+      evalSession.lastEvaluateeName = evaluateeName;
+      showSubmittedScreen();
     })
     .catch(err => {
       console.error(err);
@@ -452,6 +827,49 @@ $("submitEvalBtn").addEventListener("click", () => {
     });
 });
 
+// ===== 제출 완료 화면 =====
+function showSubmittedScreen() {
+  $("submittedInfo").innerHTML =
+    `<strong>${escapeHtml(evalSession.lastEvaluateeName)}</strong> 님에 대한 심의가 저장되었습니다.`;
+
+  // 남은 피평가자 수를 안내
+  evaluateesRef().once("value").then(snap => {
+    const data = snap.val() || {};
+    const total = Object.keys(data).length;
+    const done = evalSession.evaluatedIds.size;
+    const remaining = Math.max(0, total - done);
+    $("sessionStats").innerHTML =
+      `평가자: <strong>${escapeHtml(evalSession.evaluator)}</strong><br>` +
+      `완료 ${done}명 · 남은 피평가자 ${remaining}명`;
+    // 남은 사람이 없으면 다음 심의 버튼 비활성화
+    if (remaining === 0) {
+      $("nextEvalBtn").disabled = true;
+      $("nextEvalBtn").textContent = "모든 심의 완료";
+    } else {
+      $("nextEvalBtn").disabled = false;
+      $("nextEvalBtn").textContent = "다음 심의로 넘어가기";
+    }
+  }).catch(() => {
+    $("sessionStats").innerHTML =
+      `평가자: <strong>${escapeHtml(evalSession.evaluator)}</strong><br>` +
+      `완료 ${evalSession.evaluatedIds.size}명`;
+  });
+
+  showOnly("submittedScreen");
+}
+
+// 다음 심의로 넘어가기: 평가자는 유지, 폼 새로 렌더
+$("nextEvalBtn").addEventListener("click", () => {
+  renderEvalForm();
+  showOnly("evalScreen");
+});
+
+// 평가 종료: 세션 초기화 후 홈으로
+$("finishEvalBtn").addEventListener("click", () => {
+  resetEvalSession();
+  showOnly("homeScreen");
+});
+
 // ===== 관리자 탭 전환 =====
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => activateTab(btn.dataset.tab));
@@ -460,32 +878,54 @@ function activateTab(name) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
   $("tab-people").classList.toggle("hidden", name !== "people");
   $("tab-results").classList.toggle("hidden", name !== "results");
+  $("tab-history").classList.toggle("hidden", name !== "history");
   if (name === "people") loadPeopleList();
   if (name === "results") loadResults();
+  if (name === "history") loadHistoryRoundList();
 }
 
 // ===== 피평가자 관리 =====
 $("addPersonBtn").addEventListener("click", () => {
-  const name = $("newName").value.trim();
-  if (!name) { toast("이름을 입력하세요."); return; }
-  db.ref("evaluatees").push({ name }).then(() => {
+  if (!currentRound) { toast("회차가 시작되지 않았습니다."); return; }
+  const raw = $("newName").value;
+  // 줄바꿈으로 구분된 다중 입력 지원
+  const names = raw.split(/[\n\r]+/).map(s => s.trim()).filter(Boolean);
+  if (names.length === 0) { toast("이름을 입력하세요."); return; }
+  const ref = evaluateesRef();
+  const ops = names.map(name => ref.push({ name }));
+  Promise.all(ops).then(() => {
     $("newName").value = "";
-    toast("추가되었습니다.");
+    toast(names.length > 1 ? `${names.length}명이 추가되었습니다.` : "추가되었습니다.");
     loadPeopleList();
   }).catch(err => toast("추가 실패: " + err.message));
 });
-$("newName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("addPersonBtn").click(); });
+$("newName").addEventListener("keydown", (e) => {
+  // 단일 입력일 때만 Enter로 추가, Shift+Enter는 줄바꿈
+  if (e.key === "Enter" && !e.shiftKey) {
+    if (!$("newName").value.includes("\n")) {
+      e.preventDefault();
+      $("addPersonBtn").click();
+    }
+  }
+});
 
 function loadPeopleList() {
   const list = $("peopleList");
+  $("peopleCount").classList.add("hidden");
+  if (!currentRound) {
+    list.innerHTML = '<div class="empty">회차가 시작되지 않았습니다.</div>';
+    return;
+  }
   list.innerHTML = '<div class="empty">불러오는 중...</div>';
-  db.ref("evaluatees").once("value").then(snap => {
+  evaluateesRef().once("value").then(snap => {
     const data = snap.val() || {};
     const ids = Object.keys(data);
     if (ids.length === 0) {
       list.innerHTML = '<div class="empty">등록된 피평가자가 없습니다.</div>';
       return;
     }
+    $("peopleCount").textContent = ids.length + "명";
+    $("peopleCount").classList.remove("hidden");
     ids.sort((a,b) => (data[a].name||"").localeCompare(data[b].name||"", "ko"));
     list.innerHTML = "";
     ids.forEach(id => {
@@ -497,7 +937,7 @@ function loadPeopleList() {
       `;
       row.querySelector("button").addEventListener("click", () => {
         if (!confirm(`"${data[id].name}" 을(를) 삭제하시겠습니까?\n해당 피평가자에 대한 기존 평가는 그대로 남습니다.`)) return;
-        db.ref("evaluatees/" + id).remove().then(() => {
+        evaluateesRef().child(id).remove().then(() => {
           toast("삭제되었습니다.");
           loadPeopleList();
         });
@@ -510,9 +950,10 @@ function loadPeopleList() {
 // ===== 결과 집계 =====
 $("refreshResultsBtn").addEventListener("click", loadResults);
 $("clearAllBtn").addEventListener("click", () => {
-  if (!confirm("모든 평가 데이터를 삭제할까요?\n(피평가자 명단은 유지됩니다.)")) return;
+  if (!currentRound) { toast("회차가 없습니다."); return; }
+  if (!confirm(`"${currentRound.label}" 회차의 평가 데이터를 모두 삭제할까요?\n(피평가자 명단은 유지됩니다.)`)) return;
   if (!confirm("정말 되돌릴 수 없습니다. 계속할까요?")) return;
-  db.ref("evaluations").remove().then(() => {
+  evaluationsRef().remove().then(() => {
     toast("평가 데이터를 모두 삭제했습니다.");
     loadResults();
   });
@@ -522,8 +963,13 @@ let lastResults = null;
 
 function loadResults() {
   const list = $("rankList");
+  if (!currentRound) {
+    list.innerHTML = '<div class="empty">회차가 시작되지 않았습니다.</div>';
+    lastResults = null;
+    return;
+  }
   list.innerHTML = '<div class="empty">불러오는 중...</div>';
-  db.ref("evaluations").once("value").then(snap => {
+  evaluationsRef().once("value").then(snap => {
     const data = snap.val() || {};
     const evals = Object.values(data);
     if (evals.length === 0) {
@@ -623,8 +1069,241 @@ $("downloadXlsxBtn").addEventListener("click", () => {
   const stamp = today.getFullYear() + "-" +
     String(today.getMonth()+1).padStart(2,"0") + "-" +
     String(today.getDate()).padStart(2,"0");
-  XLSX.writeFile(wb, `VoV_심의평가_${stamp}.xlsx`);
+  const safeLabel = (currentRound?.label || "").replace(/[\\\/:*?"<>|]/g, "_") || "회차";
+  XLSX.writeFile(wb, `VoV_심의평가_${safeLabel}_${stamp}.xlsx`);
 });
+
+// ===== 새 회차 시작 =====
+$("newRoundBtn").addEventListener("click", openNewRoundScreen);
+$("newRoundBack").addEventListener("click", () => {
+  if (currentRound) {
+    enterAdmin();
+  } else {
+    showOnly("homeScreen");
+  }
+});
+
+function openNewRoundScreen() {
+  $("newRoundLabel").value = defaultRoundLabel();
+  // 현재 회차가 있으면 어떤 회차가 보관되는지 안내
+  const info = $("newRoundCurrentInfo");
+  if (currentRound) {
+    info.style.display = "block";
+    info.innerHTML = `현재 회차 <strong>${escapeHtml(currentRound.label)}</strong> 은 종료 처리되어 "지난 회차"로 보관됩니다.`;
+  } else {
+    info.style.display = "none";
+    info.innerHTML = "";
+  }
+  showOnly("newRoundScreen");
+  setTimeout(() => $("newRoundLabel").focus(), 50);
+}
+
+$("confirmNewRoundBtn").addEventListener("click", () => {
+  const label = $("newRoundLabel").value.trim();
+  if (!label) { toast("회차 이름을 입력하세요."); $("newRoundLabel").focus(); return; }
+  $("confirmNewRoundBtn").disabled = true;
+  $("confirmNewRoundBtn").textContent = "시작 중...";
+
+  const closeOldPromise = currentRound
+    ? db.ref("rounds/" + currentRound.id + "/endedAt").set(firebase.database.ServerValue.TIMESTAMP)
+    : Promise.resolve();
+
+  closeOldPromise.then(() => {
+    const newId = "round_" + Date.now();
+    return db.ref("rounds/" + newId).set({
+      label,
+      startedAt: firebase.database.ServerValue.TIMESTAMP,
+      endedAt: null
+    }).then(() => {
+      return db.ref("meta/currentRoundId").set(newId).then(() => newId);
+    });
+  }).then((newId) => {
+    return loadCurrentRound();
+  }).then(() => {
+    toast("새 회차가 시작되었습니다.");
+    enterAdmin();
+  }).catch(err => {
+    console.error(err);
+    toast("새 회차 시작 실패: " + err.message);
+  }).finally(() => {
+    $("confirmNewRoundBtn").disabled = false;
+    $("confirmNewRoundBtn").textContent = "새 회차 시작";
+  });
+});
+
+// ===== 지난 회차 =====
+let historyLastResults = null;
+let historyLastRound = null;
+
+function loadHistoryRoundList() {
+  const sel = $("historyRoundSel");
+  sel.innerHTML = '<option value="">— 회차를 선택하세요 —</option>';
+  $("historyContent").classList.add("hidden");
+  $("historyEmpty").classList.add("hidden");
+
+  db.ref("rounds").once("value").then(snap => {
+    const data = snap.val() || {};
+    const ids = Object.keys(data);
+    // 현재 진행 중인 회차는 "지난 회차"에서 제외
+    const past = ids.filter(id => !currentRound || id !== currentRound.id);
+    if (past.length === 0) {
+      $("historyEmpty").classList.remove("hidden");
+      return;
+    }
+    // 시작 시각 내림차순 정렬
+    past.sort((a, b) => (data[b]?.startedAt || 0) - (data[a]?.startedAt || 0));
+    past.forEach(id => {
+      const r = data[id] || {};
+      const opt = document.createElement("option");
+      opt.value = id;
+      const started = r.startedAt ? new Date(r.startedAt).toLocaleDateString("ko-KR") : "";
+      opt.textContent = (r.label || "(이름 없음)") + (started ? ` · ${started}` : "");
+      sel.appendChild(opt);
+    });
+  }).catch(err => {
+    console.error(err);
+    toast("지난 회차를 불러오지 못했습니다.");
+  });
+}
+
+$("historyRoundSel").addEventListener("change", () => {
+  const rid = $("historyRoundSel").value;
+  if (!rid) {
+    $("historyContent").classList.add("hidden");
+    historyLastResults = null;
+    historyLastRound = null;
+    return;
+  }
+  loadHistoryResults(rid);
+});
+
+function loadHistoryResults(rid) {
+  const list = $("historyRankList");
+  list.innerHTML = '<div class="empty">불러오는 중...</div>';
+  $("historyContent").classList.remove("hidden");
+
+  db.ref("rounds/" + rid).once("value").then(snap => {
+    const r = snap.val() || {};
+    historyLastRound = { id: rid, label: r.label || "(이름 없음)", startedAt: r.startedAt || 0, endedAt: r.endedAt || null };
+    const evals = Object.values(r.evaluations || {});
+    historyLastResults = computeRanking(evals);
+    renderRanking(list, historyLastResults.rows);
+  }).catch(err => {
+    console.error(err);
+    list.innerHTML = '<div class="empty">불러오기 실패</div>';
+  });
+}
+
+$("historyXlsxBtn").addEventListener("click", () => {
+  if (!historyLastResults || !historyLastResults.rows || historyLastResults.rows.length === 0) {
+    toast("다운로드할 데이터가 없습니다."); return;
+  }
+  const labelForFile = (historyLastRound?.label || "회차").replace(/[\\\/:*?"<>|]/g, "_");
+  buildAndDownloadXlsx(historyLastResults, labelForFile);
+});
+
+$("historyDeleteBtn").addEventListener("click", () => {
+  if (!historyLastRound) return;
+  if (!confirm(`"${historyLastRound.label}" 회차를 삭제할까요?\n해당 회차의 모든 데이터(피평가자·평가)가 사라집니다.`)) return;
+  if (!confirm("정말 되돌릴 수 없습니다. 계속할까요?")) return;
+  db.ref("rounds/" + historyLastRound.id).remove().then(() => {
+    toast("회차가 삭제되었습니다.");
+    historyLastRound = null;
+    historyLastResults = null;
+    loadHistoryRoundList();
+  });
+});
+
+// 순위 계산 공통 함수 (현재/지난 회차 모두에서 사용)
+function computeRanking(evals) {
+  if (!evals || evals.length === 0) return { evals: [], grouped: {}, rows: [] };
+  const grouped = {};
+  evals.forEach(e => {
+    const key = e.evaluateeId || ("name:" + e.evaluateeName);
+    if (!grouped[key]) {
+      grouped[key] = { name: e.evaluateeName, items: [] };
+    }
+    grouped[key].items.push(e);
+  });
+  const rows = Object.entries(grouped).map(([key, g]) => {
+    const itemAvgs = {};
+    ITEMS.forEach(it => {
+      const vals = g.items.map(x => (x.scores||{})[it.key]).filter(v => typeof v === "number");
+      itemAvgs[it.key] = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : 0;
+    });
+    const totals = g.items.map(x => x.total).filter(v => typeof v === "number");
+    const totalAvg = totals.length ? totals.reduce((a,b)=>a+b,0) / totals.length : 0;
+    return { key, name: g.name, count: g.items.length, totalAvg, itemAvgs, items: g.items };
+  });
+  rows.sort((a,b) => b.totalAvg - a.totalAvg);
+  return { evals, grouped, rows };
+}
+
+function renderRanking(listEl, rows) {
+  if (!rows || rows.length === 0) {
+    listEl.innerHTML = '<div class="empty">제출된 평가가 없습니다.</div>';
+    return;
+  }
+  listEl.innerHTML = "";
+  rows.forEach((r, idx) => {
+    const rank = idx + 1;
+    const badgeClass = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
+    const det = document.createElement("details");
+    det.innerHTML = `
+      <summary>
+        <span class="rank-badge ${badgeClass}">${rank}</span>
+        <strong>${escapeHtml(r.name || "")}</strong>
+        <span class="badge">${r.count}건</span>
+        <span style="float:right;" class="stat-score">${r.totalAvg.toFixed(2)}</span>
+      </summary>
+      <table class="detail-table">
+        <thead><tr><th>항목</th><th>평균</th></tr></thead>
+        <tbody>
+          ${ITEMS.map(it => `<tr><td>${it.label}</td><td>${r.itemAvgs[it.key].toFixed(2)}</td></tr>`).join("")}
+          <tr><td><strong>총점 평균</strong></td><td><strong>${r.totalAvg.toFixed(2)}</strong> / 35</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:10px;font-size:12px;color:#718096;">
+        평가자: ${[...new Set(r.items.map(x => x.evaluator))].map(escapeHtml).join(", ")}
+      </div>
+    `;
+    listEl.appendChild(det);
+  });
+}
+
+function buildAndDownloadXlsx(results, labelForFile) {
+  const wb = XLSX.utils.book_new();
+  const summaryHeader = ["순위","피평가자","평가건수", ...ITEMS.map(it => it.label + " 평균"), "총점 평균"];
+  const summaryRows = results.rows.map((r, idx) => [
+    idx + 1, r.name, r.count,
+    ...ITEMS.map(it => Number(r.itemAvgs[it.key].toFixed(2))),
+    Number(r.totalAvg.toFixed(2))
+  ]);
+  const ws1 = XLSX.utils.aoa_to_sheet([summaryHeader, ...summaryRows]);
+  ws1["!cols"] = [{wch:6},{wch:14},{wch:8}, ...ITEMS.map(()=>({wch:12})), {wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws1, "순위·평균");
+
+  const detailHeader = ["제출시각","평가자","피평가자", ...ITEMS.map(it => it.label), "총점"];
+  const detailRows = results.evals
+    .slice()
+    .sort((a,b) => (a.timestamp||0) - (b.timestamp||0))
+    .map(e => [
+      e.timestamp ? new Date(e.timestamp).toLocaleString("ko-KR") : "",
+      e.evaluator || "",
+      e.evaluateeName || "",
+      ...ITEMS.map(it => (e.scores||{})[it.key] ?? ""),
+      e.total ?? ""
+    ]);
+  const ws2 = XLSX.utils.aoa_to_sheet([detailHeader, ...detailRows]);
+  ws2["!cols"] = [{wch:20},{wch:12},{wch:14}, ...ITEMS.map(()=>({wch:8})), {wch:8}];
+  XLSX.utils.book_append_sheet(wb, ws2, "전체 응답");
+
+  const today = new Date();
+  const stamp = today.getFullYear() + "-" +
+    String(today.getMonth()+1).padStart(2,"0") + "-" +
+    String(today.getDate()).padStart(2,"0");
+  XLSX.writeFile(wb, `VoV_심의평가_${labelForFile}_${stamp}.xlsx`);
+}
 
 // ===== 유틸 =====
 function escapeHtml(s) {
@@ -635,6 +1314,8 @@ function escapeHtml(s) {
 
 // 시작
 showOnly("loginScreen");
+
+} // ===== bootMain 끝 =====
 </script>
 </body>
 </html>
