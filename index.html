@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#057857" />
+  <title>VoV 심의평가</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=Noto+Serif+KR:wght@500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Noto Sans KR', system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+    .serif { font-family: 'Noto Serif KR', serif; }
+    input, textarea, select { font-family: inherit; }
+    /* iOS 스크롤 부드럽게 */
+    body { -webkit-overflow-scrolling: touch; }
+  </style>
+</head>
+<body class="bg-stone-50 min-h-screen">
+  <div id="app"></div>
+
+  <!-- Firebase SDK (Compat 버전 - 단순 사용용) -->
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+
+  <script>
+    // ============================================================
+    // ⚠️ 설정 영역 - 여기를 본인 정보로 바꿔주세요
+    // ============================================================
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyBkpF_dGy8nvl5cbC9rFYG2coU1C9iIJms",
+      authDomain: "vov-evaluation.firebaseapp.com",
+      databaseURL: "https://vov-evaluation-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "vov-evaluation",
+      storageBucket: "vov-evaluation.firebasestorage.app",
+      messagingSenderId: "924215075182",
+      appId: "1:924215075182:web:c6292cd60ecec40087e17f"
+    };
+
+    // 접속 비밀번호 (이 비밀번호를 알아야 사이트 진입 가능)
+    const ACCESS_PASSWORD = "2026";
+
+    // 관리자 PIN (결과 집계 화면 접근용)
+    const ADMIN_PIN = "vov2026";
+
+    // ============================================================
+    // Firebase 초기화
+    // ============================================================
+    let db = null;
+    try {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.database();
+    } catch (e) {
+      console.error('Firebase init failed:', e);
+    }
+
+    // ============================================================
+    // 평가 항목 정의
+    // ============================================================
+    const CRITERIA = [
+      { group: '공적 내용', key: 'appropriateness', label: '적절성', desc: '피평가자의 공적 내용이 VoV 선정 유형에 부합한가?' },
+      { group: '공적 내용', key: 'effectiveness', label: '효과성', desc: '공적 내용이 조직문화에 긍정적인 영향을 끼치거나 끼칠 수 있는 내용인가? 혹은 많은 인원이 참여했는가?' },
+      { group: '공적 내용', key: 'difficulty', label: '난이도', desc: '활동 계획/운영에 투입된 시간과 노력이 상당한가?' },
+      { group: '공적 내용', key: 'novelty', label: '참신성', desc: '기존에 시도하지 않았거나 차별화된 활동인가?' },
+      { group: '개인 공적', key: 'initiative', label: '주도성', desc: '공적 내용을 추진하는 데 있어 얼마나 주도적으로 참여했는가?' },
+      { group: '개인 공적', key: 'sustainability', label: '지속성', desc: '일회성 이벤트가 아닌 지속가능한 활동 또는 내용인가?' },
+      { group: '개인 공적', key: 'influence', label: '영향력', desc: '조직문화적으로 타의 모범이 되는 인물인가?' },
+    ];
+    const SCORE_LABELS = ['매우\n그렇지\n않다', '그렇지\n않다', '보통이다', '그렇다', '매우\n그렇다'];
+
+    // ============================================================
+    // 데이터 저장소 (Firebase 기반)
+    // ============================================================
+    const store = {
+      async getConfig() {
+        const snap = await db.ref('config').once('value');
+        return snap.val();
+      },
+      async setConfig(config) {
+        await db.ref('config').set(config);
+      },
+      async saveSubmission(evaluatorId, evaluateeId, data) {
+        const safeEval = evaluatorId.replace(/[.#$/\[\]]/g, '_');
+        const safeEvte = evaluateeId.replace(/[.#$/\[\]]/g, '_');
+        await db.ref(`submissions/${safeEval}/${safeEvte}`).set(data);
+      },
+      async getSubmission(evaluatorId, evaluateeId) {
+        const safeEval = evaluatorId.replace(/[.#$/\[\]]/g, '_');
+        const safeEvte = evaluateeId.replace(/[.#$/\[\]]/g, '_');
+        const snap = await db.ref(`submissions/${safeEval}/${safeEvte}`).once('value');
+        return snap.val();
+      },
+      async listAllSubmissions() {
+        const snap = await db.ref('submissions').once('value');
+        const all = snap.val() || {};
+        const result = [];
+        for (const evaluatorId in all) {
+          for (const evaluateeId in all[evaluatorId]) {
+            result.push({
+              evaluatorId,
+              evaluateeId,
+              data: all[evaluatorId][evaluateeId],
+            });
+          }
+        }
+        return result;
+      },
+      async clearAllSubmissions() {
+        await db.ref('submissions').remove();
+      },
+    };
+
+    // ============================================================
+    // 유틸: 간단한 DOM 헬퍼
+    // ============================================================
+    const $ = (sel) => document.querySelector(sel);
+    const root = document.getElementById('app');
+
+    function html(strings, ...values) {
+      return strings.reduce((acc, str, i) => {
+        const val = values[i];
+        if (val === undefined || val === null || val === false) return acc + str;
+        if (Array.isArray(val)) return acc + str + val.join('');
+        return acc + str + val;
+      }, '');
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ============================================================
+    // 앱 상태
+    // ============================================================
+    let state = {
+      authed: false,           // 비밀번호 통과 여부
+      mode: 'home',            // home | evaluator | admin | setup
+      config: null,
+      // evaluator flow
+      evStep: 'selectEvaluator',
+      evaluator: null,
+      evaluatee: null,
+      scores: {},
+      comment: '',
+      completedMap: {},
+      // admin
+      adminAuthed: false,
+      submissions: [],
+    };
+
+    function setState(patch) {
+      state = { ...state, ...patch };
+      render();
+    }
+
+    // ============================================================
+    // 렌더링
+    // ============================================================
+    async function render() {
+      if (!state.authed) return renderGate();
+      if (!db) return renderError();
+      if (state.mode === 'home') return renderHome();
+      if (state.mode === 'setup') return renderSetup();
+      if (state.mode === 'evaluator') return renderEvaluator();
+      if (state.mode === 'admin') return renderAdmin();
+    }
+
+    function renderError() {
+      root.innerHTML = `
+        <div class="min-h-screen flex items-center justify-center px-6">
+          <div class="text-center max-w-sm">
+            <div class="text-red-600 font-bold mb-2">Firebase 설정 오류</div>
+            <div class="text-stone-600 text-sm">index.html 파일 상단의 FIREBASE_CONFIG를 본인 Firebase 프로젝트 정보로 교체해주세요.</div>
+          </div>
+        </div>`;
+    }
+
+    // ============================================================
+    // 게이트 (접속 비밀번호)
+    // ============================================================
+    function renderGate() {
+      root.innerHTML = `
+        <div class="min-h-screen flex items-center justify-center px-6">
+          <div class="max-w-sm w-full">
+            <div class="text-center mb-8">
+              <div class="text-xs tracking-[0.3em] text-emerald-700 font-medium mb-2">VoV</div>
+              <h1 class="text-3xl font-bold text-stone-900 serif">심의평가</h1>
+              <p class="text-stone-500 text-sm mt-2">접속 비밀번호를 입력해주세요</p>
+            </div>
+            <input id="gate-input" type="password" autocomplete="off"
+              class="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:border-emerald-700 focus:outline-none text-center tracking-widest"
+              placeholder="비밀번호" />
+            <button id="gate-btn" class="w-full mt-3 py-3 bg-stone-900 text-white rounded-lg font-medium">접속</button>
+            <div id="gate-err" class="text-red-600 text-xs text-center mt-3 hidden">비밀번호가 일치하지 않습니다</div>
+          </div>
+        </div>`;
+      const input = $('#gate-input');
+      const btn = $('#gate-btn');
+      const err = $('#gate-err');
+      input.focus();
+      const tryEnter = () => {
+        if (input.value === ACCESS_PASSWORD) {
+          sessionStorage.setItem('vov_authed', '1');
+          setState({ authed: true });
+        } else {
+          err.classList.remove('hidden');
+          input.value = '';
+        }
+      };
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') tryEnter(); });
+      btn.addEventListener('click', tryEnter);
+    }
+
+    // ============================================================
+    // 홈
+    // ============================================================
+    async function renderHome() {
+      const config = await store.getConfig();
+      state.config = config;
+      const isConfigured = config && config.evaluators?.length > 0 && config.evaluatees?.length > 0;
+
+      root.innerHTML = `
+        <div class="min-h-screen flex flex-col">
+          <header class="px-6 pt-12 pb-8 border-b border-stone-200">
+            <div class="max-w-md mx-auto">
+              <div class="text-xs tracking-[0.3em] text-emerald-700 font-medium mb-2">VoV</div>
+              <h1 class="text-3xl font-bold text-stone-900 serif">심의평가</h1>
+              <p class="text-stone-500 text-sm mt-2 leading-relaxed">Voice of Value 우수 인원 선정을 위한<br />심의평가 시스템</p>
+            </div>
+          </header>
+          <main class="flex-1 px-6 py-8">
+            <div class="max-w-md mx-auto space-y-3">
+              ${!isConfigured ? `
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                  <div class="text-amber-900 text-sm font-medium mb-1">설정이 필요합니다</div>
+                  <div class="text-amber-700 text-xs">평가를 시작하려면 먼저 명단을 등록해주세요.</div>
+                </div>` : ''}
+              <button data-action="evaluator" ${!isConfigured ? 'disabled' : ''}
+                class="w-full text-left p-5 rounded-xl border transition-all ${isConfigured ? 'bg-white border-stone-200 hover:border-emerald-600 hover:shadow-md active:scale-[0.99]' : 'bg-stone-100 border-stone-200 opacity-60 cursor-not-allowed'}">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs tracking-widest text-emerald-700 font-medium mb-1">EVALUATE</div>
+                    <div class="text-lg font-semibold text-stone-900">평가하기</div>
+                    <div class="text-sm text-stone-500 mt-1">평가자로 접속하여 심의평가서 작성</div>
+                  </div>
+                  <div class="text-stone-400">›</div>
+                </div>
+              </button>
+              <button data-action="admin"
+                class="w-full text-left p-5 rounded-xl border bg-white border-stone-200 hover:border-emerald-600 hover:shadow-md active:scale-[0.99] transition-all">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs tracking-widest text-emerald-700 font-medium mb-1">🔒 ADMIN</div>
+                    <div class="text-lg font-semibold text-stone-900">결과 집계</div>
+                    <div class="text-sm text-stone-500 mt-1">평가 결과 확인 및 엑셀 다운로드</div>
+                  </div>
+                  <div class="text-stone-400">›</div>
+                </div>
+              </button>
+              <button data-action="setup"
+                class="w-full text-left p-5 rounded-xl border bg-white border-stone-200 hover:border-stone-400 active:scale-[0.99] transition-all">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs tracking-widest text-stone-500 font-medium mb-1">⚙ SETUP</div>
+                    <div class="text-lg font-semibold text-stone-900">명단 설정</div>
+                    <div class="text-sm text-stone-500 mt-1">${isConfigured ? `평가자 ${config.evaluators.length}명 · 피평가자 ${config.evaluatees.length}명` : '평가자 / 피평가자 등록'}</div>
+                  </div>
+                  <div class="text-stone-400">›</div>
+                </div>
+              </button>
+            </div>
+          </main>
+          <footer class="px-6 py-4 text-center">
+            <div class="text-[10px] tracking-widest text-stone-400">모든 평가자가 동일한 결과를 공유합니다</div>
+          </footer>
+        </div>`;
+      root.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          if (btn.disabled) return;
+          if (action === 'evaluator') setState({ mode: 'evaluator', evStep: 'selectEvaluator', evaluator: null, evaluatee: null });
+          if (action === 'admin') setState({ mode: 'admin', adminAuthed: !ADMIN_PIN });
+          if (action === 'setup') setState({ mode: 'setup' });
+        });
+      });
+    }
+
+    // ============================================================
+    // 설정
+    // ============================================================
+    async function renderSetup() {
+      const config = state.config || await store.getConfig() || { evaluators: [], evaluatees: [{ name: '', rank: '', empNo: '', duty: '', selectionType: '개선활동 우수' }] };
+      let evaluators = [...(config.evaluators || [])];
+      let evaluatees = config.evaluatees?.length ? [...config.evaluatees] : [{ name: '', rank: '', empNo: '', duty: '', selectionType: '개선활동 우수' }];
+
+      const draw = () => {
+        root.innerHTML = `
+          <div class="min-h-screen pb-24">
+            <header class="px-6 pt-8 pb-4 border-b border-stone-200 bg-white sticky top-0 z-10">
+              <div class="max-w-md mx-auto flex items-center gap-3">
+                <button id="back-btn" class="p-2 -ml-2 hover:bg-stone-100 rounded-lg">‹</button>
+                <div>
+                  <div class="text-xs tracking-widest text-stone-500 font-medium">SETUP</div>
+                  <h2 class="text-xl font-bold text-stone-900 serif">명단 설정</h2>
+                </div>
+              </div>
+            </header>
+            <div class="max-w-md mx-auto px-6 py-6 space-y-8">
+              <section>
+                <h3 class="text-sm font-semibold text-stone-900 mb-3 flex items-center gap-2">
+                  <span class="w-1 h-4 bg-emerald-700 rounded-full"></span>평가자 명단
+                </h3>
+                <div class="space-y-2 mb-3" id="evaluator-list">
+                  ${evaluators.map((e, i) => `
+                    <div class="flex items-center gap-2 p-3 bg-white border border-stone-200 rounded-lg">
+                      <span class="flex-1 text-stone-900">${escapeHtml(e.name)}</span>
+                      <button data-del-evaluator="${i}" class="p-1 text-stone-400 hover:text-red-600">✕</button>
+                    </div>`).join('')}
+                </div>
+                <div class="flex gap-2">
+                  <input id="new-evaluator" type="text" placeholder="평가자 이름"
+                    class="flex-1 px-3 py-2.5 bg-white border border-stone-200 rounded-lg focus:border-emerald-700 focus:outline-none text-sm" />
+                  <button id="add-evaluator" class="px-4 py-2.5 bg-stone-900 text-white rounded-lg text-sm font-medium">추가</button>
+                </div>
+              </section>
+              <section>
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="text-sm font-semibold text-stone-900 flex items-center gap-2">
+                    <span class="w-1 h-4 bg-emerald-700 rounded-full"></span>피평가자 명단
+                  </h3>
+                  <button id="add-evaluatee" class="text-xs text-emerald-700 font-medium">+ 추가</button>
+                </div>
+                <div class="space-y-3" id="evaluatee-list">
+                  ${evaluatees.map((e, i) => `
+                    <div class="p-4 bg-white border border-stone-200 rounded-lg space-y-2">
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs text-stone-500 font-medium">피평가자 ${i + 1}</span>
+                        ${evaluatees.length > 1 ? `<button data-del-evaluatee="${i}" class="p-1 text-stone-400 hover:text-red-600">✕</button>` : ''}
+                      </div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <input data-evte="${i}" data-field="name" type="text" placeholder="성명" value="${escapeHtml(e.name)}" class="px-3 py-2 bg-stone-50 border border-stone-200 rounded-md text-sm focus:border-emerald-700 focus:outline-none" />
+                        <input data-evte="${i}" data-field="rank" type="text" placeholder="직급" value="${escapeHtml(e.rank)}" class="px-3 py-2 bg-stone-50 border border-stone-200 rounded-md text-sm focus:border-emerald-700 focus:outline-none" />
+                        <input data-evte="${i}" data-field="empNo" type="text" placeholder="사번" value="${escapeHtml(e.empNo)}" class="px-3 py-2 bg-stone-50 border border-stone-200 rounded-md text-sm focus:border-emerald-700 focus:outline-none" />
+                        <input data-evte="${i}" data-field="duty" type="text" placeholder="담당업무" value="${escapeHtml(e.duty)}" class="px-3 py-2 bg-stone-50 border border-stone-200 rounded-md text-sm focus:border-emerald-700 focus:outline-none" />
+                      </div>
+                      <select data-evte="${i}" data-field="selectionType" class="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-md text-sm focus:border-emerald-700 focus:outline-none">
+                        <option ${e.selectionType === '개선활동 우수' ? 'selected' : ''}>개선활동 우수</option>
+                        <option ${e.selectionType === '가치 내재화 우수' ? 'selected' : ''}>가치 내재화 우수</option>
+                        <option ${e.selectionType === '조직문화 개선' ? 'selected' : ''}>조직문화 개선</option>
+                      </select>
+                    </div>`).join('')}
+                </div>
+              </section>
+            </div>
+            <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-stone-200">
+              <div class="max-w-md mx-auto">
+                <button id="save-btn" class="w-full py-3.5 bg-emerald-700 text-white rounded-xl font-semibold">저장하기</button>
+              </div>
+            </div>
+          </div>`;
+
+        $('#back-btn').onclick = () => setState({ mode: 'home' });
+        $('#add-evaluator').onclick = () => {
+          const v = $('#new-evaluator').value.trim();
+          if (v) { evaluators.push({ name: v }); draw(); }
+        };
+        $('#new-evaluator').addEventListener('keydown', e => {
+          if (e.key === 'Enter') $('#add-evaluator').click();
+        });
+        root.querySelectorAll('[data-del-evaluator]').forEach(btn => {
+          btn.onclick = () => { evaluators.splice(+btn.dataset.delEvaluator, 1); draw(); };
+        });
+        $('#add-evaluatee').onclick = () => {
+          evaluatees.push({ name: '', rank: '', empNo: '', duty: '', selectionType: '개선활동 우수' });
+          draw();
+        };
+        root.querySelectorAll('[data-del-evaluatee]').forEach(btn => {
+          btn.onclick = () => { evaluatees.splice(+btn.dataset.delEvaluatee, 1); draw(); };
+        });
+        root.querySelectorAll('[data-evte]').forEach(input => {
+          input.addEventListener('input', e => {
+            const i = +input.dataset.evte;
+            evaluatees[i][input.dataset.field] = input.value;
+          });
+        });
+        $('#save-btn').onclick = async () => {
+          const valid = evaluatees.filter(e => e.name.trim());
+          if (evaluators.length === 0 || valid.length === 0) {
+            alert('평가자와 피평가자를 최소 1명 이상 등록해주세요.');
+            return;
+          }
+          await store.setConfig({ evaluators, evaluatees: valid });
+          state.config = { evaluators, evaluatees: valid };
+          setState({ mode: 'home' });
+        };
+      };
+      draw();
+    }
+
+    // ============================================================
+    // 평가자 플로우
+    // ============================================================
+    async function renderEvaluator() {
+      const config = state.config || await store.getConfig();
+      state.config = config;
+
+      if (state.evStep === 'selectEvaluator') {
+        renderSelectScreen({
+          title: '평가자 선택',
+          subtitle: '본인의 이름을 선택해주세요',
+          items: config.evaluators,
+          getKey: e => e.name,
+          getLabel: e => e.name,
+          onBack: () => setState({ mode: 'home' }),
+          onSelect: async (e) => {
+            // 완료 맵 로드
+            const map = {};
+            for (const evt of config.evaluatees) {
+              const eId = evt.empNo || evt.name;
+              const sub = await store.getSubmission(e.name, eId);
+              if (sub) map[eId] = true;
+            }
+            setState({ evaluator: e, completedMap: map, evStep: 'selectEvaluatee' });
+          },
+        });
+      } else if (state.evStep === 'selectEvaluatee') {
+        renderSelectScreen({
+          title: '피평가자 선택',
+          subtitle: `${state.evaluator.name} 평가자님, 평가할 인원을 선택하세요`,
+          items: config.evaluatees,
+          getKey: e => e.empNo || e.name,
+          getLabel: e => `${e.name}${e.rank ? ` · ${e.rank}` : ''}`,
+          getSubLabel: e => e.selectionType,
+          isCompleted: e => state.completedMap[e.empNo || e.name],
+          onBack: () => setState({ evStep: 'selectEvaluator' }),
+          onSelect: async (e) => {
+            const sub = await store.getSubmission(state.evaluator.name, e.empNo || e.name);
+            setState({
+              evaluatee: e,
+              scores: sub?.scores || {},
+              comment: sub?.comment || '',
+              evStep: 'evaluate',
+            });
+          },
+        });
+      } else if (state.evStep === 'evaluate') {
+        renderEvaluationForm();
+      } else if (state.evStep === 'done') {
+        renderDoneScreen();
+      }
+    }
+
+    function renderSelectScreen({ title, subtitle, items, getKey, getLabel, getSubLabel, isCompleted, onSelect, onBack }) {
+      root.innerHTML = `
+        <div class="min-h-screen">
+          <header class="px-6 pt-8 pb-4 border-b border-stone-200 bg-white">
+            <div class="max-w-md mx-auto">
+              <button id="back-btn" class="p-2 -ml-2 hover:bg-stone-100 rounded-lg mb-2 text-stone-700">‹</button>
+              <h2 class="text-2xl font-bold text-stone-900 serif">${escapeHtml(title)}</h2>
+              <p class="text-sm text-stone-500 mt-1">${escapeHtml(subtitle)}</p>
+            </div>
+          </header>
+          <div class="max-w-md mx-auto px-6 py-6 space-y-2">
+            ${items.map((item, i) => {
+              const completed = isCompleted?.(item);
+              return `
+                <button data-idx="${i}" class="w-full text-left p-4 rounded-xl border transition-all active:scale-[0.99] ${completed ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-stone-200 hover:border-stone-400'}">
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                      <div class="font-semibold text-stone-900">${escapeHtml(getLabel(item))}</div>
+                      ${getSubLabel ? `<div class="text-xs text-stone-500 mt-0.5">${escapeHtml(getSubLabel(item))}</div>` : ''}
+                    </div>
+                    ${completed ? `<div class="text-emerald-700 text-xs font-medium">✓ 완료</div>` : `<div class="text-stone-400">›</div>`}
+                  </div>
+                </button>`;
+            }).join('')}
+          </div>
+        </div>`;
+      $('#back-btn').onclick = onBack;
+      root.querySelectorAll('[data-idx]').forEach(btn => {
+        btn.onclick = () => onSelect(items[+btn.dataset.idx]);
+      });
+    }
+
+    function renderEvaluationForm() {
+      const { evaluator, evaluatee, scores, comment } = state;
+      const totalScore = Object.values(scores).reduce((s, v) => s + (v || 0), 0);
+      const allFilled = CRITERIA.every(c => scores[c.key]);
+      const filledCount = Object.keys(scores).length;
+      const grouped = CRITERIA.reduce((acc, c) => { (acc[c.group] = acc[c.group] || []).push(c); return acc; }, {});
+
+      root.innerHTML = `
+        <div class="min-h-screen pb-32">
+          <header class="px-6 pt-8 pb-4 border-b border-stone-200 bg-white sticky top-0 z-10">
+            <div class="max-w-md mx-auto">
+              <button id="back-btn" class="p-2 -ml-2 hover:bg-stone-100 rounded-lg mb-2 text-stone-700">‹</button>
+              <div class="flex items-baseline justify-between">
+                <div>
+                  <div class="text-xs tracking-widest text-emerald-700 font-medium mb-1">${escapeHtml(evaluatee.selectionType)}</div>
+                  <h2 class="text-2xl font-bold text-stone-900 serif">
+                    ${escapeHtml(evaluatee.name)}
+                    ${evaluatee.rank ? `<span class="text-stone-500 text-base font-normal ml-2">${escapeHtml(evaluatee.rank)}</span>` : ''}
+                  </h2>
+                </div>
+                <div class="text-right">
+                  <div class="text-[10px] text-stone-400 tracking-wider">현재 점수</div>
+                  <div class="text-2xl font-bold text-stone-900" id="total-score">${totalScore}<span class="text-sm text-stone-400">/35</span></div>
+                </div>
+              </div>
+              ${evaluatee.duty ? `<p class="text-xs text-stone-500 mt-1">담당업무: ${escapeHtml(evaluatee.duty)}</p>` : ''}
+            </div>
+          </header>
+          <div class="max-w-md mx-auto px-6 py-6 space-y-6">
+            ${Object.entries(grouped).map(([group, criteria]) => `
+              <section>
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="w-1 h-4 bg-emerald-700 rounded-full"></span>
+                  <h3 class="text-sm font-bold text-stone-900">${escapeHtml(group)}</h3>
+                </div>
+                <div class="space-y-3">
+                  ${criteria.map(c => `
+                    <div class="bg-white border border-stone-200 rounded-xl p-4">
+                      <div class="mb-3">
+                        <div class="font-bold text-stone-900 text-base">${escapeHtml(c.label)}</div>
+                        <div class="text-xs text-stone-500 mt-1 leading-relaxed">${escapeHtml(c.desc)}</div>
+                      </div>
+                      <div class="grid grid-cols-5 gap-1.5">
+                        ${[1,2,3,4,5].map(n => `
+                          <button data-criterion="${c.key}" data-value="${n}"
+                            class="score-btn py-2.5 rounded-lg border-2 transition-all active:scale-95 ${scores[c.key] === n ? 'border-emerald-700 bg-emerald-700 text-white shadow-md' : 'border-stone-200 bg-stone-50 text-stone-600'}">
+                            <div class="text-lg font-bold">${n}</div>
+                            <div class="text-[9px] leading-tight whitespace-pre-line mt-0.5 opacity-80">${SCORE_LABELS[n-1]}</div>
+                          </button>`).join('')}
+                      </div>
+                    </div>`).join('')}
+                </div>
+              </section>`).join('')}
+            <section>
+              <div class="flex items-center gap-2 mb-3">
+                <span class="w-1 h-4 bg-stone-400 rounded-full"></span>
+                <h3 class="text-sm font-bold text-stone-900">코멘트 <span class="text-xs font-normal text-stone-400">(선택)</span></h3>
+              </div>
+              <textarea id="comment-input" rows="3" placeholder="평가 의견을 자유롭게 남겨주세요"
+                class="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg focus:border-emerald-700 focus:outline-none text-sm resize-none">${escapeHtml(comment)}</textarea>
+
+```
+        </section>
+      </div>
+      <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-stone-200">
+        <div class="max-w-md mx-auto">
+          <button id="submit-btn" ${!allFilled ? 'disabled' : ''}
+            class="w-full py-3.5 rounded-xl font-semibold transition-all ${allFilled ? 'bg-emerald-700 text-white' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}">
+            ${allFilled ? `제출하기 (총점 ${totalScore}점)` : `${filledCount}/${CRITERIA.length} 항목 평가됨`}
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  $('#back-btn').onclick = () => setState({ evStep: 'selectEvaluatee' });
+  $('#comment-input').addEventListener('input', e => { state.comment = e.target.value; });
+
+  root.querySelectorAll('.score-btn').forEach(btn => {
+    btn.onclick = () => {
+      const k = btn.dataset.criterion, v = +btn.dataset.value;
+      state.scores = { ...state.scores, [k]: v };
+      renderEvaluationForm();
+    };
+  });
+
+  $('#submit-btn').onclick = async () => {
+    if (!confirm(`${evaluatee.name}님 평가를 제출하시겠습니까?\n총점: ${totalScore}점\n\n제출 후에도 다시 들어와서 수정할 수 있습니다.`)) return;
+    const data = {
+      scores: state.scores,
+      comment: state.comment,
+      totalScore,
+      submittedAt: new Date().toISOString(),
+      evaluatorName: evaluator.name,
+      evaluateeName: evaluatee.name,
+      evaluateeRank: evaluatee.rank || '',
+      evaluateeEmpNo: evaluatee.empNo || '',
+      evaluateeDuty: evaluatee.duty || '',
+      evaluateeSelectionType: evaluatee.selectionType,
+    };
+    try {
+      await store.saveSubmission(evaluator.name, evaluatee.empNo || evaluatee.name, data);
+      state.completedMap[evaluatee.empNo || evaluatee.name] = true;
+      setState({ evStep: 'done' });
+    } catch (e) {
+      alert('저장 실패: ' + e.message);
+    }
+  };
+}
+
+function renderDoneScreen() {
+  const { evaluatee, completedMap, config } = state;
+  const remaining = config.evaluatees.filter(e => !completedMap[e.empNo || e.name]);
+  root.innerHTML = `
+    <div class="min-h-screen flex flex-col items-center justify-center px-6">
+      <div class="max-w-md w-full text-center">
+        <div class="w-20 h-20 bg-emerald-700 rounded-full flex items-center justify-center mx-auto mb-6 text-white text-4xl font-bold">✓</div>
+        <h2 class="text-3xl font-bold text-stone-900 mb-2 serif">제출 완료</h2>
+        <p class="text-stone-500 mb-8">${escapeHtml(evaluatee.name)}님에 대한 평가가 저장되었습니다.</p>
+        <div class="space-y-2">
+          ${remaining.length > 0 ? `<button id="next-btn" class="w-full py-3.5 bg-emerald-700 text-white rounded-xl font-semibold">다음 피평가자 평가하기 (${remaining.length}명 남음)</button>` : `<div class="text-emerald-700 font-medium">모든 피평가자 평가 완료! 🎉</div>`}
+          <button id="home-btn" class="w-full py-3.5 border border-stone-300 text-stone-700 rounded-xl font-semibold">홈으로</button>
+        </div>
+      </div>
+    </div>`;
+  $('#next-btn')?.addEventListener('click', () => setState({ evStep: 'selectEvaluatee', evaluatee: null }));
+  $('#home-btn').onclick = () => setState({ mode: 'home' });
+}
+
+// ============================================================
+// 관리자
+// ============================================================
+async function renderAdmin() {
+  if (!state.adminAuthed) {
+    root.innerHTML = `
+      <div class="min-h-screen flex flex-col items-center justify-center px-6">
+        <div class="max-w-sm w-full">
+          <div class="text-center mb-6">
+            <div class="w-14 h-14 bg-stone-900 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-xl">🔒</div>
+            <h2 class="text-xl font-bold text-stone-900 serif">관리자 인증</h2>
+            <p class="text-sm text-stone-500 mt-1">PIN을 입력해주세요</p>
+          </div>
+          <input id="pin-input" type="password" placeholder="PIN" autofocus
+            class="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:border-emerald-700 focus:outline-none text-center tracking-widest" />
+          <button id="pin-btn" class="w-full mt-3 py-3 bg-stone-900 text-white rounded-lg font-medium">확인</button>
+          <button id="cancel-btn" class="w-full mt-2 py-3 text-stone-500 text-sm">취소</button>
+        </div>
+      </div>`;
+    const tryPin = () => {
+      if ($('#pin-input').value === ADMIN_PIN) setState({ adminAuthed: true });
+      else { alert('PIN이 일치하지 않습니다'); $('#pin-input').value = ''; }
+    };
+    $('#pin-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryPin(); });
+    $('#pin-btn').onclick = tryPin;
+    $('#cancel-btn').onclick = () => setState({ mode: 'home' });
+    return;
+  }
+
+  // 인증 후 데이터 로드
+  const config = state.config || await store.getConfig();
+  const subs = await store.listAllSubmissions();
+  state.config = config;
+  state.submissions = subs;
+
+  const aggregated = config.evaluatees.map(evt => {
+    const eId = evt.empNo || evt.name;
+    const safeId = eId.replace(/[.#$/\[\]]/g, '_');
+    const evtSubs = subs.filter(s => s.evaluateeId === safeId);
+    const totals = evtSubs.map(s => s.data.totalScore || 0);
+    const avg = totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
+    const sum = totals.reduce((a, b) => a + b, 0);
+    const criteriaAvg = {};
+    CRITERIA.forEach(c => {
+      const vals = evtSubs.map(s => s.data.scores?.[c.key]).filter(v => v != null);
+      criteriaAvg[c.key] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    });
+    return { evaluatee: evt, submissionCount: evtSubs.length, avg, sum, criteriaAvg, submissions: evtSubs };
+  }).sort((a, b) => b.avg - a.avg);
+
+  const totalExpected = config.evaluators.length * config.evaluatees.length;
+  const completion = totalExpected ? Math.round((subs.length / totalExpected) * 100) : 0;
+
+  root.innerHTML = `
+    <div class="min-h-screen pb-8">
+      <header class="px-6 pt-8 pb-4 border-b border-stone-200 bg-white sticky top-0 z-10">
+        <div class="max-w-md mx-auto">
+          <button id="back-btn" class="p-2 -ml-2 hover:bg-stone-100 rounded-lg mb-2 text-stone-700">‹</button>
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-xs tracking-widest text-emerald-700 font-medium mb-1">RESULTS</div>
+              <h2 class="text-2xl font-bold text-stone-900 serif">결과 집계</h2>
+            </div>
+            <button id="refresh-btn" class="p-2 hover:bg-stone-100 rounded-lg text-stone-600">↻</button>
+          </div>
+        </div>
+      </header>
+      <div class="max-w-md mx-auto px-6 py-6 space-y-6">
+        <div class="bg-white border border-stone-200 rounded-xl p-5">
+          <div class="flex items-baseline justify-between mb-3">
+            <span class="text-sm font-medium text-stone-700">평가 진행률</span>
+            <span class="text-2xl font-bold text-stone-900">${completion}<span class="text-sm text-stone-400">%</span></span>
+          </div>
+          <div class="h-2 bg-stone-100 rounded-full overflow-hidden mb-2">
+            <div class="h-full bg-emerald-700 transition-all" style="width: ${completion}%"></div>
+          </div>
+          <div class="text-xs text-stone-500">${subs.length} / ${totalExpected} 평가서 제출됨 (평가자 ${config.evaluators.length}명 × 피평가자 ${config.evaluatees.length}명)</div>
+        </div>
+        <section>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-stone-900">📊 피평가자별 순위</h3>
+            <button id="csv-btn" ${subs.length === 0 ? 'disabled' : ''}
+              class="text-xs px-3 py-1.5 bg-stone-900 text-white rounded-lg ${subs.length === 0 ? 'opacity-40' : ''}">⬇ 엑셀 다운로드</button>
+          </div>
+          ${aggregated.length === 0 || subs.length === 0 ? '<div class="text-center py-12 text-stone-400 text-sm">아직 제출된 평가가 없습니다</div>' : `
+            <div class="space-y-3">
+              ${aggregated.map((a, i) => {
+                const medalColors = ['bg-yellow-500', 'bg-stone-400', 'bg-amber-700'];
+                const medal = i < 3 ? medalColors[i] : 'bg-stone-300';
+                return `
+                  <div class="bg-white border border-stone-200 rounded-xl">
+                    <button data-rank="${i}" class="rank-btn w-full p-4 text-left">
+                      <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-full ${medal} text-white font-bold flex items-center justify-center text-sm">${i + 1}</div>
+                        <div class="flex-1 min-w-0">
+                          <div class="font-bold text-stone-900">${escapeHtml(a.evaluatee.name)}${a.evaluatee.rank ? `<span class="text-stone-400 font-normal text-sm ml-1.5">${escapeHtml(a.evaluatee.rank)}</span>` : ''}</div>
+                          <div class="text-xs text-stone-500 truncate">${escapeHtml(a.evaluatee.selectionType)}</div>
+                        </div>
+                        <div class="text-right">
+                          <div class="text-xl font-bold text-stone-900">${a.avg.toFixed(2)}</div>
+                          <div class="text-[10px] text-stone-400">평균 · ${a.submissionCount}명</div>
+                        </div>
+                      </div>
+                    </button>
+                    <div class="rank-detail hidden px-4 pb-4 pt-0 border-t border-stone-100 mt-2 space-y-2" data-rank-detail="${i}">
+                      <div class="text-xs font-semibold text-stone-700 mt-3 mb-2">항목별 평균</div>
+                      ${CRITERIA.map(c => `
+                        <div class="flex items-center gap-2">
+                          <div class="text-xs text-stone-600 w-14">${escapeHtml(c.label)}</div>
+                          <div class="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-emerald-700" style="width: ${(a.criteriaAvg[c.key] / 5) * 100}%"></div>
+                          </div>
+                          <div class="text-xs font-medium text-stone-900 w-8 text-right">${a.criteriaAvg[c.key].toFixed(1)}</div>
+                        </div>`).join('')}
+                      ${a.submissions.some(s => s.data.comment) ? `
+                        <div class="text-xs font-semibold text-stone-700 mt-4 mb-2">코멘트</div>
+                        <div class="space-y-1.5">
+                          ${a.submissions.filter(s => s.data.comment).map(s => `
+                            <div class="bg-stone-50 rounded-lg p-2.5">
+                              <div class="text-[10px] text-stone-500 mb-0.5">${escapeHtml(s.evaluatorId)}</div>
+                              <div class="text-xs text-stone-700">${escapeHtml(s.data.comment)}</div>
+                            </div>`).join('')}
+                        </div>` : ''}
+                      <div class="text-xs font-semibold text-stone-700 mt-4 mb-2">평가자별 점수</div>
+                      <div class="grid grid-cols-2 gap-1.5">
+                        ${a.submissions.map(s => `
+                          <div class="flex items-center justify-between bg-stone-50 rounded-md px-2.5 py-1.5">
+                            <span class="text-xs text-stone-600">${escapeHtml(s.evaluatorId)}</span>
+                            <span class="text-xs font-bold text-stone-900">${s.data.totalScore}</span>
+                          </div>`).join('')}
+                      </div>
+                    </div>
+                  </div>`;
+              }).join('')}
+            </div>`}
+        </section>
+        <section>
+          <h3 class="text-sm font-bold text-stone-900 mb-3">👥 평가자별 제출 현황</h3>
+          <div class="space-y-2">
+            ${config.evaluators.map(ev => {
+              const safeId = ev.name.replace(/[.#$/\[\]]/g, '_');
+              const myCount = subs.filter(s => s.evaluatorId === safeId).length;
+              const total = config.evaluatees.length;
+              const pct = Math.round((myCount / total) * 100);
+              return `
+                <div class="bg-white border border-stone-200 rounded-lg p-3">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-sm font-medium text-stone-900">${escapeHtml(ev.name)}</span>
+                    <span class="text-xs text-stone-500">${myCount} / ${total}</span>
+                  </div>
+                  <div class="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                    <div class="h-full ${pct === 100 ? 'bg-emerald-700' : 'bg-stone-400'}" style="width: ${pct}%"></div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </section>
+        <section class="pt-4 border-t border-stone-200">
+          <button id="reset-btn" class="w-full py-2.5 text-sm text-red-600 border border-red-200 rounded-lg">모든 평가 데이터 초기화</button>
+        </section>
+      </div>
+    </div>`;
+
+  $('#back-btn').onclick = () => setState({ mode: 'home', adminAuthed: false });
+  $('#refresh-btn').onclick = () => renderAdmin();
+  root.querySelectorAll('.rank-btn').forEach(btn => {
+    btn.onclick = () => {
+      const detail = root.querySelector(`[data-rank-detail="${btn.dataset.rank}"]`);
+      detail.classList.toggle('hidden');
+    };
+  });
+  $('#csv-btn')?.addEventListener('click', () => downloadCSV(aggregated, subs, config));
+  $('#reset-btn').onclick = async () => {
+    if (!confirm('정말 모든 평가 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
+    await store.clearAllSubmissions();
+    renderAdmin();
+  };
+}
+
+function downloadCSV(aggregated, submissions, config) {
+  const rows = [];
+  rows.push(['순위', '피평가자', '직급', '사번', '담당업무', '선정유형', '제출 평가자 수', '총점 합계', '평균', ...CRITERIA.map(c => `${c.label} 평균`)]);
+  aggregated.forEach((a, i) => {
+    rows.push([
+      i + 1, a.evaluatee.name, a.evaluatee.rank || '', a.evaluatee.empNo || '',
+      a.evaluatee.duty || '', a.evaluatee.selectionType, a.submissionCount,
+      a.sum.toFixed(0), a.avg.toFixed(2),
+      ...CRITERIA.map(c => a.criteriaAvg[c.key].toFixed(2)),
+    ]);
+  });
+  rows.push([]);
+  rows.push(['=== 상세 평가 내역 ===']);
+  rows.push(['피평가자', '평가자', '총점', ...CRITERIA.map(c => c.label), '코멘트']);
+  submissions.forEach(s => {
+    rows.push([
+      s.data.evaluateeName || s.evaluateeId,
+      s.data.evaluatorName || s.evaluatorId,
+      s.data.totalScore,
+      ...CRITERIA.map(c => s.data.scores?.[c.key] || ''),
+      s.data.comment || '',
+    ]);
+  });
+  const csv = '\ufeff' + rows.map(r => r.map(cell => {
+    const str = String(cell ?? '');
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `VoV_심의평가_결과_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// 시작
+// ============================================================
+if (sessionStorage.getItem('vov_authed') === '1') state.authed = true;
+render();
+```
+
+  </script>
+</body>
+</html>
