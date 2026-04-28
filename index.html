@@ -756,7 +756,10 @@ function updateProgress() {
 }
 
 // ===== 피평가자 목록 로드 (평가 화면) =====
+// 호출 토큰 — 동시 호출 시 가장 최근 호출의 .then만 select를 채워서 옵션이 두 번 쌓이는 race 방지
+let _loadEvaluateeOptionsToken = 0;
 function loadEvaluateeOptions() {
+  const myToken = ++_loadEvaluateeOptionsToken;
   const sel = $("evaluateeSel");
   sel.innerHTML = '<option value="">— 선택하세요 —</option>';
   $("noEvaluateeMsg").classList.add("hidden");
@@ -766,6 +769,7 @@ function loadEvaluateeOptions() {
     return;
   }
   evaluateesRef().once("value").then(snap => {
+    if (myToken !== _loadEvaluateeOptionsToken) return; // 더 최신 호출이 있으면 무시
     const data = snap.val() || {};
     const ids = Object.keys(data);
     if (ids.length === 0) {
@@ -786,6 +790,7 @@ function loadEvaluateeOptions() {
       sel.appendChild(opt);
     });
   }).catch(err => {
+    if (myToken !== _loadEvaluateeOptionsToken) return;
     console.error(err);
     toast("피평가자 목록을 불러오지 못했습니다.");
   });
