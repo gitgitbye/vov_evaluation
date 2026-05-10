@@ -65,7 +65,30 @@
     border-radius: 12px;
     padding: 16px;
     margin-bottom: 12px;
+    border: 2px solid transparent;
+    transition: border-color .2s, box-shadow .2s, background .2s;
   }
+  .item-block.missing {
+    border-color: #fc8181;
+    background: #fff5f5;
+    box-shadow: 0 0 0 3px rgba(252,129,129,0.18);
+    animation: vov-shake .35s ease-in-out;
+  }
+  select.missing-input {
+    border-color: #fc8181 !important;
+    box-shadow: 0 0 0 3px rgba(252,129,129,0.18) !important;
+  }
+  @keyframes vov-shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  #progressText {
+    font-size: 13px; color: #4a5568; font-weight: 600;
+    text-align: right; margin: 6px 0 14px;
+  }
+  #progressText .left { color: #e53e3e; }
+  #progressText .done { color: #38a169; }
   .item-title { font-weight: 700; color: #2d3748; margin-bottom: 4px; }
   .item-desc { font-size: 16px; color: #4a5568; font-weight: 500; line-height: 1.55; margin-bottom: 12px; }
   .scale {
@@ -202,6 +225,7 @@
         진행 중인 평가 회차가 없습니다.<br>관리자에게 문의하세요.
       </p>
       <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+      <div id="progressText">0 / 8 입력</div>
 
       <div id="evaluatorInfo" style="background:#f7fafc;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
         <div>
@@ -809,6 +833,7 @@ function renderEvalForm() {
   // 평가자 정보 박스 채우기 (이름은 시작 화면에서 이미 받았음)
   $("evaluatorInfoName").textContent = evalSession.evaluator || "—";
   $("evaluateeSel").value = "";
+  $("evaluateeSel").classList.remove("missing-input"); // 이전 미입력 강조 정리
   $("submitEvalBtn").disabled = false;
   $("submitEvalBtn").textContent = "제출하기";
   // 그룹 렌더
@@ -816,6 +841,7 @@ function renderEvalForm() {
   ITEMS.forEach((it, idx) => {
     const wrap = document.createElement("div");
     wrap.className = "item-block";
+    wrap.dataset.itemKey = it.key; // submit 시 미입력 표시에 사용
     let scaleHtml = '<div class="scale">';
     for (let i = 1; i <= 5; i++) {
       scaleHtml += `<label>
@@ -831,8 +857,19 @@ function renderEvalForm() {
     `;
     $(it.group === 1 ? "group1" : "group2").appendChild(wrap);
   });
-  // 변경 감지: 진행률 갱신 + 임시 저장
-  const onFormChange = () => { updateProgress(); saveFormDraft(); };
+  // 변경 감지: 진행률 갱신 + 임시 저장 + 미입력 강조 자동 해제
+  const onFormChange = (ev) => {
+    updateProgress();
+    saveFormDraft();
+    if (ev && ev.target) {
+      if (ev.target.id === "evaluateeSel") {
+        if (ev.target.value) ev.target.classList.remove("missing-input");
+      } else {
+        const wrap = ev.target.closest && ev.target.closest('.item-block');
+        if (wrap) wrap.classList.remove("missing");
+      }
+    }
+  };
   document.querySelectorAll('input[type=radio]').forEach(r => {
     r.addEventListener("change", onFormChange);
   });
@@ -849,6 +886,15 @@ function updateProgress() {
   });
   const total = 1 + ITEMS.length;
   $("progressBar").style.width = Math.round((filled / total) * 100) + "%";
+  const pt = $("progressText");
+  if (pt) {
+    if (filled === total) {
+      pt.innerHTML = `<span class="done">${filled} / ${total} 입력 완료 ✓</span>`;
+    } else {
+      const left = total - filled;
+      pt.innerHTML = `${filled} / ${total} 입력 (<span class="left">${left}개 남음</span>)`;
+    }
+  }
 }
 
 // ===== 피평가자 목록 로드 (평가 화면) =====
@@ -911,8 +957,13 @@ function loadEvaluateeOptions() {
 }
 
 // ===== 평가 제출 =====
+// 평가자 이름 정규화 (공백 제거) — 중복 검사 시 "홍길동" / "홍 길동" 동일 취급
+function normalizeEvaluator(s) {
+  return (s || "").trim().replace(/\s+/g, "");
+}
+
 let _submittingEval = false;
-$("submitEvalBtn").addEventListener("click", () => {
+$("submitEvalBtn").addEventListener("click", async () => {
   // 리스너 이중 바인딩 / 더블클릭 시 같은 클릭에서 두 번 제출되는 것을 방지
   // (disabled 세팅은 다음 이벤트부터 적용되므로 동기로 두 listener가 같이 도는 케이스를 못 막음)
   if (_submittingEval) return;
@@ -921,13 +972,33 @@ $("submitEvalBtn").addEventListener("click", () => {
   const evaluateeId = $("evaluateeSel").value;
   const evaluateeName = $("evaluateeSel").selectedOptions[0]?.textContent || "";
   if (!evaluator) { toast("평가자 이름이 비어있습니다. 다시 시작해주세요."); showEvaluatorEntry(); return; }
-  if (!evaluateeId) { toast("피평가자를 선택하세요."); return; }
+
+  // 미입력 항목을 모두 표시하고 첫 번째로 스크롤
+  let firstMissing = null;
+  const sel = $("evaluateeSel");
+  sel.classList.remove("missing-input");
+  if (!evaluateeId) {
+    sel.classList.add("missing-input");
+    firstMissing = sel;
+  }
   const scores = {};
   for (const it of ITEMS) {
+    const wrap = document.querySelector(`.item-block[data-item-key="${it.key}"]`);
+    if (wrap) wrap.classList.remove("missing");
     const v = document.querySelector(`input[name=score_${it.key}]:checked`);
-    if (!v) { toast(`"${it.label}" 점수를 선택하세요.`); return; }
-    scores[it.key] = parseInt(v.value, 10);
+    if (!v) {
+      if (wrap) wrap.classList.add("missing");
+      if (!firstMissing) firstMissing = wrap || sel;
+    } else {
+      scores[it.key] = parseInt(v.value, 10);
+    }
   }
+  if (firstMissing) {
+    firstMissing.scrollIntoView({ behavior: "smooth", block: "center" });
+    toast("빨간색으로 표시된 미입력 항목을 채워주세요.");
+    return;
+  }
+
   const total = Object.values(scores).reduce((a,b) => a+b, 0);
   const payload = {
     evaluator, evaluateeId, evaluateeName,
@@ -937,26 +1008,67 @@ $("submitEvalBtn").addEventListener("click", () => {
   _submittingEval = true;
   $("submitEvalBtn").disabled = true;
   $("submitEvalBtn").textContent = "제출 중...";
-  evaluationsRef().push(payload)
-    .then(() => {
-      // 세션 상태 업데이트: 평가자 이름 고정, 완료한 피평가자 기록
-      evalSession.evaluator = evaluator;
-      evalSession.evaluatedIds.add(evaluateeId);
-      evalSession.lastEvaluateeName = evaluateeName;
-      // 임시 저장 갱신: 완료 명단은 유지, 작성 중 폼 상태는 비움
-      saveSessionToDraft();
-      clearDraftForm();
-      showSubmittedScreen();
-    })
-    .catch(err => {
-      console.error(err);
-      toast("제출 실패: " + err.message);
-    })
-    .finally(() => {
-      _submittingEval = false;
-      $("submitEvalBtn").disabled = false;
-      $("submitEvalBtn").textContent = "제출하기";
-    });
+
+  try {
+    // ── 중복 제출 검사 (DB 차원) ──
+    // 같은 회차에서 같은 평가자가 같은 피평가자에 이미 제출했는지 확인.
+    // 인덱스(.indexOn: ["evaluateeId"])가 없어도 동작하나, 콘솔 워닝이 뜨고 느려짐.
+    let dupKey = null;
+    try {
+      const dupSnap = await evaluationsRef()
+        .orderByChild("evaluateeId")
+        .equalTo(evaluateeId)
+        .once("value");
+      const existing = dupSnap.val() || {};
+      const myKey = normalizeEvaluator(evaluator);
+      for (const [k, v] of Object.entries(existing)) {
+        if (normalizeEvaluator(v.evaluator) === myKey) { dupKey = k; break; }
+      }
+    } catch (e) {
+      // 중복 검사 실패는 치명적이지 않음 — 워닝만 남기고 계속 진행
+      console.warn("중복 검사 실패(쿼리):", e);
+    }
+    if (dupKey) {
+      const ok = confirm(
+        `${evaluator} 님은 이미 "${evaluateeName}" 에 대한 평가를 제출하셨습니다.\n\n` +
+        `덮어쓰시겠습니까?\n` +
+        `확인 = 기존 평가를 삭제하고 새 점수로 다시 저장\n` +
+        `취소 = 제출하지 않고 폼 유지`
+      );
+      if (!ok) {
+        _submittingEval = false;
+        $("submitEvalBtn").disabled = false;
+        $("submitEvalBtn").textContent = "제출하기";
+        return;
+      }
+      try { await evaluationsRef().child(dupKey).remove(); }
+      catch (e) {
+        console.error("기존 평가 삭제 실패:", e);
+        toast("기존 평가 삭제에 실패했습니다. 다시 시도해주세요.");
+        _submittingEval = false;
+        $("submitEvalBtn").disabled = false;
+        $("submitEvalBtn").textContent = "제출하기";
+        return;
+      }
+    }
+
+    await evaluationsRef().push(payload);
+    // 세션 상태 업데이트: 평가자 이름 고정, 완료한 피평가자 기록
+    evalSession.evaluator = evaluator;
+    evalSession.evaluatedIds.add(evaluateeId);
+    evalSession.lastEvaluateeName = evaluateeName;
+    // 임시 저장 갱신: 완료 명단은 유지, 작성 중 폼 상태는 비움
+    saveSessionToDraft();
+    clearDraftForm();
+    showSubmittedScreen();
+  } catch (err) {
+    console.error(err);
+    toast("제출 실패: " + (err.message || err));
+  } finally {
+    _submittingEval = false;
+    $("submitEvalBtn").disabled = false;
+    $("submitEvalBtn").textContent = "제출하기";
+  }
 });
 
 // ===== 제출 완료 화면 =====
