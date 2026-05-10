@@ -510,6 +510,72 @@ function resetEvalSession() {
   evalSession.lastEvaluateeName = "";
 }
 
+// ===== 평가 임시 저장 (localStorage) =====
+// 새로고침·뒤로가기·앱 백그라운드 회수로 평가 작성 내용이 날아가는 사고 방지.
+// 회차 id 단위로 평가자 이름·완료 명단·작성 중인 폼 상태까지 보관.
+const DRAFT_KEY = "vov_eval_draft_v1";
+let _pendingDraftRestore = null; // 다음 loadEvaluateeOptions 완료 시 적용할 복원 데이터
+
+function readDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function writeDraft(patch) {
+  try {
+    const cur = readDraft() || {};
+    const next = Object.assign({}, cur, patch, { savedAt: Date.now() });
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+  } catch (e) {}
+}
+function clearDraftAll() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+}
+function clearDraftForm() {
+  const cur = readDraft();
+  if (!cur) return;
+  delete cur.draft;
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(cur)); } catch (e) {}
+}
+function saveSessionToDraft() {
+  if (!currentRound) return;
+  writeDraft({
+    roundId: currentRound.id,
+    evaluator: evalSession.evaluator || "",
+    evaluatedIds: [...evalSession.evaluatedIds]
+  });
+}
+function saveFormDraft() {
+  if (!currentRound) return;
+  const sel = $("evaluateeSel");
+  if (!sel) return;
+  const evaluateeId = sel.value || "";
+  const evaluateeName = (sel.selectedOptions[0] && sel.selectedOptions[0].textContent) || "";
+  const scores = {};
+  ITEMS.forEach(it => {
+    const v = document.querySelector(`input[name=score_${it.key}]:checked`);
+    if (v) scores[it.key] = parseInt(v.value, 10);
+  });
+  if (!evaluateeId && Object.keys(scores).length === 0) {
+    // 폼이 텅 비었으면 폼 임시 저장만 비움 (평가자/완료명단은 유지)
+    clearDraftForm();
+    return;
+  }
+  writeDraft({
+    roundId: currentRound.id,
+    draft: { evaluateeId, evaluateeName, scores }
+  });
+}
+function hasFormInProgress() {
+  const sel = $("evaluateeSel");
+  if (sel && sel.value) return true;
+  for (const it of ITEMS) {
+    if (document.querySelector(`input[name=score_${it.key}]:checked`)) return true;
+  }
+  return false;
+}
+
 // ===== 회차(Round) 상태 =====
 // Firebase 구조:
 //   meta/currentRoundId: "<roundId>"
@@ -565,9 +631,30 @@ $("loginPw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("logi
 
 // ===== 홈 =====
 $("goEvalBtn").addEventListener("click", () => {
-  // 새로 진입할 때는 세션 초기화 후 이름 입력 화면으로
-  resetEvalSession();
   loadCurrentRound().then(() => {
+    // 같은 회차의 임시 저장이 있으면 이어하기 제안
+    if (currentRound) {
+      const d = readDraft();
+      if (d && d.roundId === currentRound.id && d.evaluator) {
+        const hasDraft = d.draft && (d.draft.evaluateeId ||
+          (d.draft.scores && Object.keys(d.draft.scores).length > 0));
+        const doneN = (d.evaluatedIds || []).length;
+        const msg = hasDraft
+          ? `이전에 작성하던 평가가 있습니다.\n\n평가자: ${d.evaluator}\n완료한 피평가자: ${doneN}명\n작성 중: ${d.draft.evaluateeName || "(이름 미상)"}\n\n이어서 진행하시겠습니까?\n(취소하면 처음부터 다시 시작합니다.)`
+          : `이전 진행 상황이 있습니다.\n\n평가자: ${d.evaluator}\n완료한 피평가자: ${doneN}명\n\n이어서 진행하시겠습니까?\n(취소하면 처음부터 다시 시작합니다.)`;
+        if (confirm(msg)) {
+          evalSession.evaluator = d.evaluator;
+          evalSession.evaluatedIds = new Set(d.evaluatedIds || []);
+          evalSession.lastEvaluateeName = "";
+          if (hasDraft) _pendingDraftRestore = d.draft;
+          renderEvalForm();
+          showOnly("evalScreen");
+          return;
+        }
+        clearDraftAll();
+      }
+    }
+    resetEvalSession();
     showEvaluatorEntry();
   }).catch(err => {
     console.error(err);
@@ -576,7 +663,11 @@ $("goEvalBtn").addEventListener("click", () => {
 });
 $("goAdminBtn").addEventListener("click", () => { $("adminPin").value = ""; showOnly("adminPinScreen"); });
 $("evalBack").addEventListener("click", () => {
-  // 뒤로 가도 세션 초기화 (이름 다시 받게)
+  // 작성 중인 평가가 있으면 한 번 더 확인
+  if (hasFormInProgress()) {
+    if (!confirm("작성 중인 평가 내용이 있습니다.\n저장되지 않고 사라지며, 이번 세션 진행 상황도 초기화됩니다.\n\n정말 나가시겠습니까?")) return;
+  }
+  clearDraftAll();
   resetEvalSession();
   showOnly("homeScreen");
 });
@@ -603,6 +694,7 @@ function showEvaluatorEntry() {
 }
 
 $("entryBack").addEventListener("click", () => {
+  clearDraftAll();
   resetEvalSession();
   showOnly("homeScreen");
 });
@@ -612,6 +704,7 @@ $("startEvalBtn").addEventListener("click", () => {
   const name = $("evaluatorName").value.trim();
   if (!name) { toast("평가자 이름을 입력하세요."); $("evaluatorName").focus(); return; }
   evalSession.evaluator = name;
+  saveSessionToDraft(); // 평가자 이름 확정 즉시 임시 저장
   renderEvalForm();
   showOnly("evalScreen");
 });
@@ -623,6 +716,7 @@ $("evaluatorName").addEventListener("keydown", (e) => {
 // 평가 화면에서 "변경" 누르면 이름 입력 화면으로 (세션 초기화)
 $("changeEvaluatorBtn").addEventListener("click", () => {
   if (!confirm("평가자를 변경하시겠습니까?\n이번 세션의 진행 상황(이미 심의한 피평가자 기록)이 초기화됩니다.")) return;
+  clearDraftAll();
   resetEvalSession();
   showEvaluatorEntry();
 });
@@ -737,11 +831,13 @@ function renderEvalForm() {
     `;
     $(it.group === 1 ? "group1" : "group2").appendChild(wrap);
   });
-  // 진행률 계산을 위해 변경 감지
+  // 변경 감지: 진행률 갱신 + 임시 저장
+  const onFormChange = () => { updateProgress(); saveFormDraft(); };
   document.querySelectorAll('input[type=radio]').forEach(r => {
-    r.addEventListener("change", updateProgress);
+    r.addEventListener("change", onFormChange);
   });
-  $("evaluateeSel").addEventListener("change", updateProgress);
+  // select는 폼 재렌더 사이에 DOM이 유지되므로 onchange로 교체(리스너 누적 방지)
+  $("evaluateeSel").onchange = onFormChange;
   loadEvaluateeOptions();
   updateProgress();
 }
@@ -789,6 +885,24 @@ function loadEvaluateeOptions() {
       opt.textContent = data[id].name || "(이름 없음)";
       sel.appendChild(opt);
     });
+    // 임시 저장된 폼 상태가 있으면 복원
+    if (_pendingDraftRestore) {
+      const d = _pendingDraftRestore;
+      _pendingDraftRestore = null;
+      if (d.evaluateeId && sel.querySelector(`option[value="${d.evaluateeId}"]`)) {
+        sel.value = d.evaluateeId;
+      } else if (d.evaluateeId) {
+        // 명단에서 해당 피평가자가 사라졌거나 이미 완료 처리된 경우
+        toast("이전에 작성하던 피평가자가 명단에 없어 점수만 복원했습니다.");
+      }
+      if (d.scores) {
+        Object.entries(d.scores).forEach(([key, val]) => {
+          const r = document.querySelector(`input[name=score_${key}][value="${val}"]`);
+          if (r) r.checked = true;
+        });
+      }
+      updateProgress();
+    }
   }).catch(err => {
     if (myToken !== _loadEvaluateeOptionsToken) return;
     console.error(err);
@@ -829,6 +943,9 @@ $("submitEvalBtn").addEventListener("click", () => {
       evalSession.evaluator = evaluator;
       evalSession.evaluatedIds.add(evaluateeId);
       evalSession.lastEvaluateeName = evaluateeName;
+      // 임시 저장 갱신: 완료 명단은 유지, 작성 중 폼 상태는 비움
+      saveSessionToDraft();
+      clearDraftForm();
       showSubmittedScreen();
     })
     .catch(err => {
@@ -881,6 +998,7 @@ $("nextEvalBtn").addEventListener("click", () => {
 
 // 평가 종료: 세션 초기화 후 홈으로
 $("finishEvalBtn").addEventListener("click", () => {
+  clearDraftAll();
   resetEvalSession();
   showOnly("homeScreen");
 });
@@ -1332,6 +1450,19 @@ function escapeHtml(s) {
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[c]));
 }
+
+// ===== 새로고침/탭 종료 보호 =====
+// 평가 화면이 열려 있고 작성 내용이 있으면 마지막으로 임시 저장하고 경고를 띄움.
+window.addEventListener("beforeunload", (e) => {
+  const evalOpen = !$("evalScreen").classList.contains("hidden");
+  if (!evalOpen) return;
+  // 떠나기 전에 마지막으로 저장 시도
+  try { saveFormDraft(); } catch (err) {}
+  if (hasFormInProgress()) {
+    e.preventDefault();
+    e.returnValue = ""; // 최신 브라우저는 자체 메시지 사용
+  }
+});
 
 // 시작
 showOnly("loginScreen");
