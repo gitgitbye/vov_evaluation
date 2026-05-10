@@ -172,6 +172,27 @@
   details summary { cursor: pointer; font-weight: 600; outline: none; }
   details summary::-webkit-details-marker { color: #667eea; }
   .badge { display: inline-block; background: #e9d8fd; color: #6b46c1; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
+  /* ===== 데이터 편집 탭 ===== */
+  .warn-box { background: #fff5f5; border: 1px solid #fc8181; color: #9b2c2c; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; }
+  .hint { font-size: 12px; color: #718096; margin: 4px 0 10px; line-height: 1.5; }
+  .editor-list { display: flex; flex-direction: column; gap: 6px; }
+  .editor-row { background: #f7fafc; border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+  .editor-row .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .editor-row .meta { color: #718096; font-size: 11px; margin-top: 2px; }
+  .editor-row .actions { display: flex; gap: 6px; }
+  .editor-row .actions button { width: auto; padding: 6px 10px; font-size: 12px; }
+  .editor-row .body { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+  .editor-row.open .body { display: block; }
+  .score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .score-grid label { font-size: 12px; color: #4a5568; margin: 0; font-weight: 500; }
+  .score-grid select { padding: 6px 8px; font-size: 13px; }
+  .checkrow { display: flex; align-items: center; gap: 10px; }
+  .checkrow input[type=checkbox] { width: 18px; height: 18px; flex: 0 0 auto; cursor: pointer; }
+  .checkrow .name { flex: 1; font-weight: 600; }
+  .group-card { background: #f7fafc; border-radius: 10px; padding: 10px 12px; }
+  .group-card.warn { background: #fffaf0; border: 1px solid #f6ad55; }
+  .variant { font-size: 12px; color: #4a5568; padding: 2px 0; }
+  .editor-empty { text-align: center; color: #a0aec0; padding: 16px 8px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -307,9 +328,10 @@
       </div>
 
       <div class="tabs">
-        <button class="tab active" data-tab="people">피평가자 관리</button>
+        <button class="tab active" data-tab="people">피평가자</button>
         <button class="tab" data-tab="results">결과 집계</button>
         <button class="tab" data-tab="history">지난 회차</button>
+        <button class="tab" data-tab="editor">데이터 편집</button>
       </div>
 
       <!-- 피평가자 관리 탭 -->
@@ -359,6 +381,38 @@
         <p id="historyEmpty" class="empty">
           종료된 지난 회차가 아직 없습니다.
         </p>
+      </div>
+
+      <!-- 데이터 편집 탭 -->
+      <div id="tab-editor" class="hidden">
+        <div class="warn-box">
+          ⚠️ 이 화면에서는 DB의 평가/피평가자/평가자 데이터를 직접 수정합니다.
+          모든 변경은 즉시 적용되며 되돌릴 수 없습니다.
+        </div>
+        <div style="height:10px"></div>
+        <button id="editorRefreshBtn" class="secondary">데이터 새로고침</button>
+        <div style="height:18px"></div>
+
+        <!-- 1. 평가 레코드 편집 -->
+        <h3>1. 평가 레코드 <span id="evalRecordsCount" class="badge hidden"></span></h3>
+        <input type="text" id="evalRecordsSearch" placeholder="평가자 또는 피평가자 이름으로 검색" style="margin-bottom:8px;">
+        <div id="evalRecordsList" class="editor-list"></div>
+        <div style="height:24px"></div>
+
+        <!-- 2. 피평가자 관리 (고급) -->
+        <h3>2. 피평가자 (고급)</h3>
+        <p class="hint">체크박스로 여러 명을 선택해 일괄 삭제하거나, 정확히 두 명을 선택해 한 명으로 합칠 수 있습니다.</p>
+        <div class="row" style="margin-bottom:10px;">
+          <button id="advPeopleDeleteBtn" class="danger" style="flex:1;">선택 삭제</button>
+          <button id="advPeopleMergeBtn" class="secondary" style="flex:1;">선택 병합 (2명)</button>
+        </div>
+        <div id="advPeopleList" class="editor-list"></div>
+        <div style="height:24px"></div>
+
+        <!-- 3. 평가자 이름 정리 -->
+        <h3>3. 평가자 이름 정리</h3>
+        <p class="hint">현재 회차에 등장한 평가자 이름을 공백 무시 정규화 키로 묶어서 보여줍니다. 표기가 다른 동일 인물을 발견하면 한 이름으로 통합하세요.</p>
+        <div id="evaluatorList" class="editor-list"></div>
       </div>
     </div>
   </div>
@@ -1124,9 +1178,11 @@ function activateTab(name) {
   $("tab-people").classList.toggle("hidden", name !== "people");
   $("tab-results").classList.toggle("hidden", name !== "results");
   $("tab-history").classList.toggle("hidden", name !== "history");
+  $("tab-editor").classList.toggle("hidden", name !== "editor");
   if (name === "people") loadPeopleList();
   if (name === "results") loadResults();
   if (name === "history") loadHistoryRoundList();
+  if (name === "editor") loadDataEditor();
 }
 
 // ===== 피평가자 관리 =====
@@ -1554,6 +1610,390 @@ function buildAndDownloadXlsx(results, labelForFile) {
     String(today.getMonth()+1).padStart(2,"0") + "-" +
     String(today.getDate()).padStart(2,"0");
   XLSX.writeFile(wb, `VoV_심의평가_${labelForFile}_${stamp}.xlsx`);
+}
+
+// ============================================================
+// ===== 데이터 편집 탭 (evaluations / evaluatees / evaluators) =====
+// ============================================================
+// 상태 캐시 — 새로고침 시 갱신됨
+let editorCache = { evaluations: {}, evaluatees: {} };
+
+$("editorRefreshBtn").addEventListener("click", loadDataEditor);
+$("evalRecordsSearch").addEventListener("input", () => renderEvalRecords());
+$("advPeopleDeleteBtn").addEventListener("click", advPeopleBulkDelete);
+$("advPeopleMergeBtn").addEventListener("click", advPeopleMerge);
+
+function loadDataEditor() {
+  if (!currentRound) {
+    $("evalRecordsList").innerHTML = '<div class="editor-empty">회차가 시작되지 않았습니다.</div>';
+    $("advPeopleList").innerHTML = '<div class="editor-empty">회차가 시작되지 않았습니다.</div>';
+    $("evaluatorList").innerHTML = '<div class="editor-empty">회차가 시작되지 않았습니다.</div>';
+    return;
+  }
+  $("evalRecordsList").innerHTML = '<div class="editor-empty">불러오는 중...</div>';
+  $("advPeopleList").innerHTML = '<div class="editor-empty">불러오는 중...</div>';
+  $("evaluatorList").innerHTML = '<div class="editor-empty">불러오는 중...</div>';
+  Promise.all([
+    evaluationsRef().once("value"),
+    evaluateesRef().once("value")
+  ]).then(([evSnap, peSnap]) => {
+    editorCache.evaluations = evSnap.val() || {};
+    editorCache.evaluatees = peSnap.val() || {};
+    renderEvalRecords();
+    renderAdvPeople();
+    renderEvaluatorList();
+  }).catch(err => {
+    console.error(err);
+    toast("데이터를 불러오지 못했습니다.");
+  });
+}
+
+// ----- 1. 평가 레코드 -----
+function renderEvalRecords() {
+  const list = $("evalRecordsList");
+  const q = ($("evalRecordsSearch").value || "").trim().toLowerCase();
+  const entries = Object.entries(editorCache.evaluations);
+  $("evalRecordsCount").textContent = entries.length + "건";
+  $("evalRecordsCount").classList.toggle("hidden", entries.length === 0);
+  if (entries.length === 0) {
+    list.innerHTML = '<div class="editor-empty">제출된 평가가 없습니다.</div>';
+    return;
+  }
+  // 최신순
+  entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+  // 필터
+  const filtered = q
+    ? entries.filter(([k, v]) =>
+        ((v.evaluator || "").toLowerCase().includes(q)) ||
+        ((v.evaluateeName || "").toLowerCase().includes(q)))
+    : entries;
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="editor-empty">검색 결과가 없습니다.</div>';
+    return;
+  }
+  list.innerHTML = "";
+  filtered.forEach(([key, ev]) => {
+    const row = document.createElement("div");
+    row.className = "editor-row";
+    const when = ev.timestamp ? new Date(ev.timestamp).toLocaleString("ko-KR") : "";
+    const scoresInputs = ITEMS.map(it => {
+      const cur = (ev.scores || {})[it.key] || 1;
+      const opts = [1,2,3,4,5].map(n =>
+        `<option value="${n}" ${n === cur ? "selected" : ""}>${n}</option>`).join("");
+      return `<div>
+        <label>${escapeHtml(it.label)}</label>
+        <select data-score-key="${it.key}">${opts}</select>
+      </div>`;
+    }).join("");
+    row.innerHTML = `
+      <div class="head">
+        <div>
+          <div><strong>${escapeHtml(ev.evaluator || "(이름 없음)")}</strong> → ${escapeHtml(ev.evaluateeName || "(이름 없음)")}</div>
+          <div class="meta">총점 ${ev.total ?? "-"} / 35 · ${escapeHtml(when)}</div>
+        </div>
+        <div class="actions">
+          <button class="secondary" data-act="edit">수정</button>
+          <button class="danger" data-act="del">삭제</button>
+        </div>
+      </div>
+      <div class="body">
+        <div class="score-grid">${scoresInputs}</div>
+        <div style="height:8px"></div>
+        <div class="row">
+          <button data-act="save" style="flex:1;">저장</button>
+          <button class="secondary" data-act="cancel" style="flex:1;">취소</button>
+        </div>
+      </div>
+    `;
+    row.querySelector('[data-act="edit"]').addEventListener("click", () => {
+      row.classList.toggle("open");
+    });
+    row.querySelector('[data-act="cancel"]').addEventListener("click", () => {
+      row.classList.remove("open");
+      // 입력값 원복
+      ITEMS.forEach(it => {
+        const sel = row.querySelector(`select[data-score-key="${it.key}"]`);
+        if (sel) sel.value = String((ev.scores || {})[it.key] || 1);
+      });
+    });
+    row.querySelector('[data-act="del"]').addEventListener("click", () => {
+      if (!confirm(`이 평가를 삭제하시겠습니까?\n\n${ev.evaluator} → ${ev.evaluateeName}\n총점 ${ev.total} / 35\n\n되돌릴 수 없습니다.`)) return;
+      evaluationsRef().child(key).remove().then(() => {
+        toast("삭제되었습니다.");
+        loadDataEditor();
+      }).catch(err => toast("삭제 실패: " + err.message));
+    });
+    row.querySelector('[data-act="save"]').addEventListener("click", () => {
+      const newScores = {};
+      ITEMS.forEach(it => {
+        const sel = row.querySelector(`select[data-score-key="${it.key}"]`);
+        newScores[it.key] = parseInt(sel.value, 10);
+      });
+      const newTotal = Object.values(newScores).reduce((a,b) => a+b, 0);
+      if (!confirm(`점수를 저장하시겠습니까?\n\n${ev.evaluator} → ${ev.evaluateeName}\n새 총점: ${newTotal} / 35`)) return;
+      evaluationsRef().child(key).update({ scores: newScores, total: newTotal })
+        .then(() => {
+          toast("저장되었습니다.");
+          loadDataEditor();
+        }).catch(err => toast("저장 실패: " + err.message));
+    });
+    list.appendChild(row);
+  });
+}
+
+// ----- 2. 피평가자 (고급) -----
+function renderAdvPeople() {
+  const list = $("advPeopleList");
+  const ids = Object.keys(editorCache.evaluatees);
+  if (ids.length === 0) {
+    list.innerHTML = '<div class="editor-empty">등록된 피평가자가 없습니다.</div>';
+    return;
+  }
+  ids.sort((a, b) => (editorCache.evaluatees[a].name || "").localeCompare(editorCache.evaluatees[b].name || "", "ko"));
+  list.innerHTML = "";
+  ids.forEach(id => {
+    const name = editorCache.evaluatees[id].name || "";
+    const evalCount = Object.values(editorCache.evaluations).filter(e => e.evaluateeId === id).length;
+    const row = document.createElement("div");
+    row.className = "editor-row";
+    row.innerHTML = `
+      <div class="checkrow">
+        <input type="checkbox" data-pid="${id}">
+        <span class="name">${escapeHtml(name)}</span>
+        <span class="meta">평가 ${evalCount}건</span>
+        <button class="secondary" data-act="rename" style="width:auto;padding:6px 10px;font-size:12px;">이름 변경</button>
+      </div>
+    `;
+    row.querySelector('[data-act="rename"]').addEventListener("click", () => {
+      renamePerson(id, name);
+    });
+    list.appendChild(row);
+  });
+}
+
+function getCheckedPersonIds() {
+  return Array.from($("advPeopleList").querySelectorAll('input[type=checkbox]:checked'))
+    .map(c => c.dataset.pid);
+}
+
+function renamePerson(id, oldName) {
+  const next = prompt(`"${oldName}" 의 새 이름을 입력하세요.\n(연결된 모든 평가의 피평가자 이름도 함께 변경됩니다.)`, oldName);
+  if (next === null) return;
+  const newName = next.trim();
+  if (!newName) { toast("이름이 비어있습니다."); return; }
+  if (newName === oldName) return;
+  // 동명 다른 id 존재 시 안내(병합이 더 적절할 수 있음)
+  const dupId = Object.entries(editorCache.evaluatees)
+    .find(([k, v]) => k !== id && (v.name || "").trim() === newName);
+  if (dupId) {
+    if (!confirm(`이미 "${newName}" 이름의 다른 피평가자가 존재합니다.\n그래도 이름을 변경하시겠습니까?\n(병합이 필요하면 두 명을 체크 후 "병합" 버튼을 사용하세요.)`)) return;
+  }
+  // 평가 cascade 업데이트 + 피평가자 노드 업데이트 (atomic)
+  const updates = { [`evaluatees/${id}/name`]: newName };
+  Object.entries(editorCache.evaluations).forEach(([k, v]) => {
+    if (v.evaluateeId === id) updates[`evaluations/${k}/evaluateeName`] = newName;
+  });
+  db.ref("rounds/" + currentRound.id).update(updates).then(() => {
+    toast("이름이 변경되었습니다.");
+    loadDataEditor();
+  }).catch(err => toast("변경 실패: " + err.message));
+}
+
+function advPeopleBulkDelete() {
+  const ids = getCheckedPersonIds();
+  if (ids.length === 0) { toast("삭제할 피평가자를 선택하세요."); return; }
+  const names = ids.map(id => editorCache.evaluatees[id].name || "").join(", ");
+  const evalCount = Object.values(editorCache.evaluations)
+    .filter(e => ids.includes(e.evaluateeId)).length;
+  let msg = `다음 ${ids.length}명을 삭제하시겠습니까?\n\n${names}\n\n`;
+  if (evalCount > 0) {
+    msg += `⚠️ 이들에 대한 기존 평가 ${evalCount}건도 함께 삭제됩니다.\n`;
+  }
+  msg += "되돌릴 수 없습니다.";
+  if (!confirm(msg)) return;
+  if (evalCount > 0 && !confirm(`정말 평가 ${evalCount}건까지 삭제하시겠습니까?`)) return;
+  const updates = {};
+  ids.forEach(id => { updates[`evaluatees/${id}`] = null; });
+  Object.entries(editorCache.evaluations).forEach(([k, v]) => {
+    if (ids.includes(v.evaluateeId)) updates[`evaluations/${k}`] = null;
+  });
+  db.ref("rounds/" + currentRound.id).update(updates).then(() => {
+    toast(`${ids.length}명이 삭제되었습니다.`);
+    loadDataEditor();
+  }).catch(err => toast("삭제 실패: " + err.message));
+}
+
+function advPeopleMerge() {
+  const ids = getCheckedPersonIds();
+  if (ids.length !== 2) { toast("정확히 2명을 선택하세요."); return; }
+  const [a, b] = ids;
+  const aName = editorCache.evaluatees[a].name || "";
+  const bName = editorCache.evaluatees[b].name || "";
+  const which = prompt(
+    `두 명을 한 명으로 합칩니다.\n어느 이름을 남길까요?\n\n1: ${aName}\n2: ${bName}\n\n숫자(1 또는 2)를 입력하세요.`,
+    "1"
+  );
+  if (which === null) return;
+  const dst = which.trim() === "2" ? b : (which.trim() === "1" ? a : null);
+  if (!dst) { toast("1 또는 2만 입력 가능합니다."); return; }
+  const src = dst === a ? b : a;
+  const dstName = editorCache.evaluatees[dst].name || "";
+  const srcName = editorCache.evaluatees[src].name || "";
+
+  // src의 평가들을 dst로 이전. 같은 평가자가 양쪽에 평가했으면 timestamp 최신만 유지.
+  const allEvals = Object.entries(editorCache.evaluations);
+  const dstEvalsByEvaluator = new Map();
+  const srcEvalsByEvaluator = new Map();
+  allEvals.forEach(([k, v]) => {
+    const norm = normalizeEvaluator(v.evaluator);
+    if (v.evaluateeId === dst) dstEvalsByEvaluator.set(norm, { k, v });
+    if (v.evaluateeId === src) srcEvalsByEvaluator.set(norm, { k, v });
+  });
+  const conflicts = [];
+  const updates = {};
+  // src → dst 이전
+  srcEvalsByEvaluator.forEach(({ k, v }, evaluatorKey) => {
+    const dstHit = dstEvalsByEvaluator.get(evaluatorKey);
+    if (dstHit) {
+      // 충돌: timestamp 최신만 살림
+      const srcTime = v.timestamp || 0;
+      const dstTime = dstHit.v.timestamp || 0;
+      conflicts.push({ evaluator: v.evaluator, srcTime, dstTime });
+      if (srcTime > dstTime) {
+        // src가 더 최신 → dst 삭제, src를 dst로 이전
+        updates[`evaluations/${dstHit.k}`] = null;
+        updates[`evaluations/${k}/evaluateeId`] = dst;
+        updates[`evaluations/${k}/evaluateeName`] = dstName;
+      } else {
+        // dst가 더 최신(또는 동률) → src 삭제
+        updates[`evaluations/${k}`] = null;
+      }
+    } else {
+      updates[`evaluations/${k}/evaluateeId`] = dst;
+      updates[`evaluations/${k}/evaluateeName`] = dstName;
+    }
+  });
+  // src 피평가자 삭제
+  updates[`evaluatees/${src}`] = null;
+
+  let msg = `"${srcName}" 을(를) "${dstName}" 으로 합칩니다.\n\n`;
+  msg += `· "${srcName}" 의 평가 ${srcEvalsByEvaluator.size}건이 "${dstName}" 으로 이동\n`;
+  msg += `· "${srcName}" 피평가자 항목은 삭제\n`;
+  if (conflicts.length > 0) {
+    msg += `\n⚠️ 같은 평가자가 양쪽에 평가한 ${conflicts.length}건이 발견되어 더 최신 평가만 남깁니다:\n`;
+    msg += conflicts.map(c => "  · " + c.evaluator).join("\n");
+    msg += "\n";
+  }
+  msg += "\n되돌릴 수 없습니다. 진행할까요?";
+  if (!confirm(msg)) return;
+  db.ref("rounds/" + currentRound.id).update(updates).then(() => {
+    toast("병합되었습니다.");
+    loadDataEditor();
+  }).catch(err => toast("병합 실패: " + err.message));
+}
+
+// ----- 3. 평가자 이름 정리 -----
+function renderEvaluatorList() {
+  const list = $("evaluatorList");
+  const evals = Object.values(editorCache.evaluations);
+  if (evals.length === 0) {
+    list.innerHTML = '<div class="editor-empty">제출된 평가가 없어 평가자 목록도 비어있습니다.</div>';
+    return;
+  }
+  // 정규화 키 → { variants: Map(name → count), total: n }
+  const groups = new Map();
+  evals.forEach(e => {
+    const raw = (e.evaluator || "").trim();
+    if (!raw) return;
+    const key = normalizeEvaluator(raw);
+    if (!groups.has(key)) groups.set(key, { variants: new Map(), total: 0 });
+    const g = groups.get(key);
+    g.variants.set(raw, (g.variants.get(raw) || 0) + 1);
+    g.total += 1;
+  });
+  if (groups.size === 0) {
+    list.innerHTML = '<div class="editor-empty">평가자 정보가 없습니다.</div>';
+    return;
+  }
+  // 정렬: 변형 많은 그룹(병합 필요한 것) 우선, 그 다음 총건수 많은 순
+  const arr = [...groups.entries()].sort((a, b) => {
+    const av = a[1].variants.size, bv = b[1].variants.size;
+    if (av !== bv) return bv - av;
+    return b[1].total - a[1].total;
+  });
+  list.innerHTML = "";
+  arr.forEach(([key, g]) => {
+    const variants = [...g.variants.entries()];
+    const needsMerge = variants.length > 1;
+    const card = document.createElement("div");
+    card.className = "group-card" + (needsMerge ? " warn" : "");
+    const variantsHtml = variants
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, n]) => `<div class="variant">· "${escapeHtml(name)}" (${n}건)</div>`)
+      .join("");
+    card.innerHTML = `
+      <div style="font-weight:600;">${escapeHtml(variants[0][0])} <span class="meta" style="color:#718096;font-size:11px;">정규형: ${escapeHtml(key)} · 총 ${g.total}건</span></div>
+      ${variantsHtml}
+      <div style="height:8px"></div>
+      <div class="row">
+        ${needsMerge ? `<button data-act="unify" style="flex:1;">한 이름으로 통합</button>` : ""}
+        <button class="secondary" data-act="rename" style="flex:1;">이름 변경</button>
+      </div>
+    `;
+    if (needsMerge) {
+      card.querySelector('[data-act="unify"]').addEventListener("click", () => {
+        unifyEvaluators(variants);
+      });
+    }
+    card.querySelector('[data-act="rename"]').addEventListener("click", () => {
+      renameEvaluatorAll(variants);
+    });
+    list.appendChild(card);
+  });
+}
+
+function unifyEvaluators(variants) {
+  // variants: [[name, count], ...] 빈도순 정렬됨
+  const choices = variants.map(([n], i) => `${i+1}: ${n} (${variants[i][1]}건)`).join("\n");
+  const which = prompt(
+    `어느 표기로 통합할까요?\n\n${choices}\n\n숫자를 입력하세요. 다른 이름을 원하면 직접 입력해도 됩니다.`,
+    "1"
+  );
+  if (which === null) return;
+  const trimmed = which.trim();
+  if (!trimmed) { toast("입력이 비어있습니다."); return; }
+  let canonical;
+  const idx = parseInt(trimmed, 10);
+  if (!isNaN(idx) && idx >= 1 && idx <= variants.length) {
+    canonical = variants[idx - 1][0];
+  } else {
+    canonical = trimmed;
+  }
+  const sourceNames = variants.map(([n]) => n);
+  applyEvaluatorRename(sourceNames, canonical);
+}
+
+function renameEvaluatorAll(variants) {
+  const oldDisplay = variants.map(([n, c]) => `"${n}" (${c}건)`).join(", ");
+  const next = prompt(`이 평가자의 모든 표기 [${oldDisplay}] 를 새 이름으로 변경합니다.\n새 이름을 입력하세요.`, variants[0][0]);
+  if (next === null) return;
+  const newName = next.trim();
+  if (!newName) { toast("이름이 비어있습니다."); return; }
+  const sourceNames = variants.map(([n]) => n);
+  applyEvaluatorRename(sourceNames, newName);
+}
+
+function applyEvaluatorRename(sourceNames, newName) {
+  const targets = Object.entries(editorCache.evaluations)
+    .filter(([k, v]) => sourceNames.includes((v.evaluator || "").trim()));
+  if (targets.length === 0) { toast("적용할 평가가 없습니다."); return; }
+  if (!confirm(`평가 ${targets.length}건의 평가자 이름을 "${newName}" 으로 변경합니다.\n진행할까요?`)) return;
+  const updates = {};
+  targets.forEach(([k]) => { updates[`evaluations/${k}/evaluator`] = newName; });
+  db.ref("rounds/" + currentRound.id).update(updates).then(() => {
+    toast("평가자 이름이 통일되었습니다.");
+    loadDataEditor();
+  }).catch(err => toast("변경 실패: " + err.message));
 }
 
 // ===== 유틸 =====
