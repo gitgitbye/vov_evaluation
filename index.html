@@ -193,6 +193,16 @@
   .group-card.warn { background: #fffaf0; border: 1px solid #f6ad55; }
   .variant { font-size: 12px; color: #4a5568; padding: 2px 0; }
   .editor-empty { text-align: center; color: #a0aec0; padding: 16px 8px; font-size: 13px; }
+  /* ===== 잠금 / 실시간 현황 ===== */
+  .lock-badge { display: inline-block; background: #2d3748; color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 6px; margin-left: 8px; vertical-align: middle; font-weight: 600; }
+  .live-summary { color: #2d3748; line-height: 1.5; }
+  .live-summary strong { color: #1a202c; }
+  .live-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12px; border-bottom: 1px solid #f0f4f8; }
+  .live-row:last-child { border-bottom: none; }
+  .live-row .meta { color: #4a5568; font-weight: 600; }
+  .live-row.complete .meta { color: #38a169; }
+  .live-row.complete span:first-child::before { content: "✓ "; color: #38a169; }
+  .eval-locked-banner { background: #fff5f5; border: 2px solid #fc8181; color: #9b2c2c; padding: 16px; border-radius: 10px; font-weight: 600; text-align: center; margin: 12px 0; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -245,6 +255,9 @@
       <p id="evalNoRoundMsg" class="empty hidden" style="padding:10px 0;">
         진행 중인 평가 회차가 없습니다.<br>관리자에게 문의하세요.
       </p>
+      <div id="evalLockedBanner" class="eval-locked-banner hidden">
+        ⚠ 이 회차는 종료(잠김) 처리되어 더 이상 제출할 수 없습니다.<br>관리자에게 문의하세요.
+      </div>
       <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
       <div id="progressText">0 / 8 입력</div>
 
@@ -324,7 +337,11 @@
         <div id="currentRoundLabel" style="font-weight:700;font-size:16px;color:#2d3748;">—</div>
         <div id="currentRoundMeta" style="font-size:12px;color:#a0aec0;margin-top:2px;"></div>
         <div style="height:10px"></div>
-        <button id="newRoundBtn" class="secondary">새 회차 시작</button>
+        <div class="row">
+          <button id="newRoundBtn" class="secondary" style="flex:1;">새 회차 시작</button>
+          <button id="lockToggleBtn" class="danger" style="flex:1;display:none;">회차 잠그기</button>
+        </div>
+        <div id="liveStatusBox" style="margin-top:12px;padding:10px 12px;background:#fff;border-radius:8px;font-size:13px;display:none;"></div>
       </div>
 
       <div class="tabs">
@@ -669,7 +686,7 @@ function loadCurrentRound() {
     return db.ref("rounds/" + rid).once("value").then(rSnap => {
       const r = rSnap.val();
       if (!r) { currentRound = null; return null; }
-      currentRound = { id: rid, label: r.label || "(이름 없음)", startedAt: r.startedAt || 0, endedAt: r.endedAt || null };
+      currentRound = { id: rid, label: r.label || "(이름 없음)", startedAt: r.startedAt || 0, endedAt: r.endedAt || null, locked: r.locked === true };
       return currentRound;
     });
   });
@@ -710,6 +727,10 @@ $("loginPw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("logi
 // ===== 홈 =====
 $("goEvalBtn").addEventListener("click", () => {
   loadCurrentRound().then(() => {
+    if (currentRound && currentRound.locked) {
+      toast("이 회차는 종료(잠김) 처리되어 제출할 수 없습니다. 관리자에게 문의하세요.");
+      return;
+    }
     // 같은 회차의 임시 저장이 있으면 이어하기 제안
     if (currentRound) {
       const d = readDraft();
@@ -750,7 +771,7 @@ $("evalBack").addEventListener("click", () => {
   showOnly("homeScreen");
 });
 $("adminPinBack").addEventListener("click", () => showOnly("homeScreen"));
-$("adminBack").addEventListener("click", () => showOnly("homeScreen"));
+$("adminBack").addEventListener("click", () => { detachLiveStatus(); showOnly("homeScreen"); });
 
 // ===== 평가자 이름 입력 화면 =====
 function showEvaluatorEntry() {
@@ -779,6 +800,7 @@ $("entryBack").addEventListener("click", () => {
 
 $("startEvalBtn").addEventListener("click", () => {
   if (!currentRound) { toast("진행 중인 회차가 없습니다."); return; }
+  if (currentRound.locked) { toast("이 회차는 종료(잠김) 처리되어 제출할 수 없습니다."); return; }
   const name = $("evaluatorName").value.trim();
   if (!name) { toast("평가자 이름을 입력하세요."); $("evaluatorName").focus(); return; }
   evalSession.evaluator = name;
@@ -821,17 +843,114 @@ function enterAdmin() {
   renderCurrentRoundBox();
   activateTab("people");
   loadPeopleList();
+  attachLiveStatus();
 }
 
 function renderCurrentRoundBox() {
   if (!currentRound) {
     $("currentRoundLabel").textContent = "—";
     $("currentRoundMeta").textContent = "회차가 시작되지 않았습니다.";
+    $("lockToggleBtn").style.display = "none";
+    $("liveStatusBox").style.display = "none";
     return;
   }
-  $("currentRoundLabel").textContent = currentRound.label;
+  const lockHtml = currentRound.locked ? ' <span class="lock-badge">🔒 잠김</span>' : '';
+  $("currentRoundLabel").innerHTML = escapeHtml(currentRound.label) + lockHtml;
   const started = currentRound.startedAt ? new Date(currentRound.startedAt).toLocaleString("ko-KR") : "";
   $("currentRoundMeta").textContent = started ? `시작: ${started}` : "";
+  $("lockToggleBtn").style.display = "";
+  if (currentRound.locked) {
+    $("lockToggleBtn").textContent = "회차 잠금 해제";
+    $("lockToggleBtn").className = "secondary";
+  } else {
+    $("lockToggleBtn").textContent = "회차 잠그기";
+    $("lockToggleBtn").className = "danger";
+  }
+  $("liveStatusBox").style.display = "";
+}
+
+// ===== 회차 잠금 토글 =====
+$("lockToggleBtn").addEventListener("click", () => {
+  if (!currentRound) return;
+  const want = !currentRound.locked;
+  const msg = want
+    ? "회차를 잠그시겠습니까?\n잠금 후에는 평가자가 더 이상 제출할 수 없습니다.\n(결과 발표 후 추가 제출 차단용)"
+    : "회차 잠금을 해제하시겠습니까?\n해제하면 평가자가 다시 제출할 수 있습니다.";
+  if (!confirm(msg)) return;
+  db.ref("rounds/" + currentRound.id + "/locked").set(want).then(() => {
+    currentRound.locked = want;
+    renderCurrentRoundBox();
+    toast(want ? "회차가 잠겼습니다." : "회차 잠금이 해제되었습니다.");
+  }).catch(err => toast("실패: " + (err.message || err)));
+});
+
+// ===== 실시간 제출 현황 (admin 전용) =====
+let _liveEvalsListener = null;
+let _liveEvalsRoundId = null; // attach 시점의 회차 id (정리용)
+let _liveEvaluateesCache = {};
+function attachLiveStatus() {
+  detachLiveStatus();
+  if (!currentRound) return;
+  const rid = currentRound.id;
+  _liveEvalsRoundId = rid;
+  // 피평가자 명단 1회 로드 (총 N명 비교용)
+  db.ref("rounds/" + rid + "/evaluatees").once("value").then(snap => {
+    if (_liveEvalsRoundId !== rid) return;
+    _liveEvaluateesCache = snap.val() || {};
+    // 평가는 실시간 구독
+    const ref = db.ref("rounds/" + rid + "/evaluations");
+    _liveEvalsListener = ref.on("value", (snap2) => {
+      if (_liveEvalsRoundId !== rid) return;
+      renderLiveStatus(snap2.val() || {});
+    }, (err) => {
+      console.warn("실시간 현황 구독 오류:", err);
+    });
+  }).catch(err => console.warn("피평가자 로드 오류:", err));
+}
+function detachLiveStatus() {
+  if (_liveEvalsListener && _liveEvalsRoundId) {
+    try { db.ref("rounds/" + _liveEvalsRoundId + "/evaluations").off("value", _liveEvalsListener); } catch (e) {}
+  }
+  _liveEvalsListener = null;
+  _liveEvalsRoundId = null;
+  _liveEvaluateesCache = {};
+}
+function renderLiveStatus(evaluations) {
+  const box = $("liveStatusBox");
+  if (!box) return;
+  const evals = Object.values(evaluations);
+  const totalPeers = Object.keys(_liveEvaluateesCache).length;
+  if (evals.length === 0) {
+    box.innerHTML = '<div style="color:#a0aec0;text-align:center;">아직 제출된 평가가 없습니다.</div>';
+    return;
+  }
+  // 평가자별 그룹 (정규화 키)
+  const byEvaluator = new Map();
+  evals.forEach(e => {
+    const k = normalizeEvaluator(e.evaluator);
+    if (!k) return;
+    if (!byEvaluator.has(k)) byEvaluator.set(k, { display: e.evaluator, peers: new Set() });
+    byEvaluator.get(k).peers.add(e.evaluateeId);
+  });
+  const arr = [...byEvaluator.values()].sort((a, b) => b.peers.size - a.peers.size);
+  const completeCount = totalPeers > 0 ? arr.filter(v => v.peers.size >= totalPeers).length : 0;
+  const headline = totalPeers > 0
+    ? `평가자 <strong>${arr.length}명</strong> 참여 · 완전 제출 <strong>${completeCount}명</strong> · 총 ${evals.length}건 / 피평가자 ${totalPeers}명`
+    : `평가자 <strong>${arr.length}명</strong> 참여 · 총 ${evals.length}건`;
+  const breakdown = totalPeers > 0
+    ? arr.map(v => {
+        const done = v.peers.size;
+        const complete = done >= totalPeers;
+        return `<div class="live-row${complete ? ' complete' : ''}"><span>${escapeHtml(v.display)}</span><span class="meta">${done}/${totalPeers}</span></div>`;
+      }).join("")
+    : arr.map(v => `<div class="live-row"><span>${escapeHtml(v.display)}</span><span class="meta">${v.peers.size}건</span></div>`).join("");
+  box.innerHTML = `
+    <div class="live-summary">${headline}</div>
+    <details style="margin-top:6px;">
+      <summary style="cursor:pointer;font-size:12px;color:#4a5568;font-weight:600;">평가자별 진행 보기</summary>
+      <div style="margin-top:6px;">${breakdown}</div>
+    </details>
+  `;
 }
 
 // 처음 진입 시 기존 데이터(레거시 evaluatees / evaluations)가 있으면
@@ -871,6 +990,18 @@ function maybeMigrateLegacyAndStart() {
 }
 
 // ===== 평가 폼 렌더링 =====
+function renderEvalLockedBanner() {
+  const el = $("evalLockedBanner");
+  if (!el) return;
+  if (currentRound && currentRound.locked) {
+    el.classList.remove("hidden");
+    $("submitEvalBtn").disabled = true;
+    $("submitEvalBtn").textContent = "회차 잠김 — 제출 불가";
+  } else {
+    el.classList.add("hidden");
+  }
+}
+
 function renderEvalForm() {
   // 회차 표시 / 회차 없음 안내
   const badge = $("evalRoundBadge");
@@ -890,6 +1021,7 @@ function renderEvalForm() {
   $("evaluateeSel").classList.remove("missing-input"); // 이전 미입력 강조 정리
   $("submitEvalBtn").disabled = false;
   $("submitEvalBtn").textContent = "제출하기";
+  renderEvalLockedBanner();
   // 그룹 렌더
   ["group1","group2"].forEach(g => $(g).innerHTML = "");
   ITEMS.forEach((it, idx) => {
@@ -1064,6 +1196,24 @@ $("submitEvalBtn").addEventListener("click", async () => {
   $("submitEvalBtn").textContent = "제출 중...";
 
   try {
+    // ── 회차 잠금 검사 (제출 직전 DB 재확인) ──
+    // 관리자가 회차를 잠근 직후 제출되는 경합을 방지.
+    try {
+      const lockSnap = await db.ref("rounds/" + currentRound.id + "/locked").once("value");
+      if (lockSnap.val() === true) {
+        toast("이 회차는 종료(잠김) 처리되어 제출할 수 없습니다. 관리자에게 문의하세요.");
+        currentRound.locked = true;
+        renderEvalLockedBanner();
+        _submittingEval = false;
+        $("submitEvalBtn").disabled = true;
+        $("submitEvalBtn").textContent = "회차 잠김 — 제출 불가";
+        return;
+      }
+    } catch (e) {
+      console.warn("잠금 확인 실패:", e);
+      // 확인 실패 시에는 사용자가 작성한 내용을 잃지 않도록 진행
+    }
+
     // ── 중복 제출 검사 (DB 차원) ──
     // 같은 회차에서 같은 평가자가 같은 피평가자에 이미 제출했는지 확인.
     // 인덱스(.indexOn: ["evaluateeId"])가 없어도 동작하나, 콘솔 워닝이 뜨고 느려짐.
@@ -1428,6 +1578,7 @@ $("confirmNewRoundBtn").addEventListener("click", () => {
     return loadCurrentRound();
   }).then(() => {
     toast("새 회차가 시작되었습니다.");
+    detachLiveStatus();
     enterAdmin();
   }).catch(err => {
     console.error(err);
