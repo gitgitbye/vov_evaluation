@@ -567,9 +567,38 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// ===== 상수 =====
-const ACCESS_PW = "2026";
-const ADMIN_PIN = "vov2026";
+// ===== 인증 (해시 비교) =====
+// 평문 비밀번호는 코드에 보관하지 않음. 해시는 Firebase RTDB /config 에 저장.
+// 비밀번호 교체는 Firebase Console 에서 /config/{accessPwHash, adminPinHash} 값만 갈아끼우면 됨.
+const AUTH_SALT = "vov_eval_v1_salt_8f2a";
+let _authConfigCache = null;
+let _authConfigPromise = null;
+
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function loadAuthConfig() {
+  // 부팅 시 한 번 로드 + 메모이즈. /config 값 바뀌면 페이지 새로고침 필요.
+  if (_authConfigCache) return Promise.resolve(_authConfigCache);
+  if (_authConfigPromise) return _authConfigPromise;
+  _authConfigPromise = db.ref("config").once("value").then(snap => {
+    _authConfigCache = snap.val() || {};
+    return _authConfigCache;
+  }).catch(err => {
+    _authConfigPromise = null;
+    throw err;
+  });
+  return _authConfigPromise;
+}
+async function verifyPassword(input, which) {
+  // which: "access" | "admin"
+  const cfg = await loadAuthConfig();
+  const expected = which === "admin" ? cfg.adminPinHash : cfg.accessPwHash;
+  if (!expected) throw new Error("auth config 누락 (" + which + ")");
+  const got = await sha256Hex(AUTH_SALT + (input || ""));
+  return got === expected;
+}
 
 const ITEMS = [
   { group: 1, key: "appropriateness", label: "적절성", desc: "피평가자의 공적 내용이 VoV 선정 유형에 부합한가?" },
@@ -715,11 +744,22 @@ function toast(msg) {
 }
 
 // ===== 로그인 =====
-$("loginBtn").addEventListener("click", () => {
-  if ($("loginPw").value === ACCESS_PW) {
-    showOnly("homeScreen");
-  } else {
-    toast("비밀번호가 올바르지 않습니다.");
+$("loginBtn").addEventListener("click", async () => {
+  const btn = $("loginBtn");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const ok = await verifyPassword($("loginPw").value, "access");
+    if (ok) {
+      showOnly("homeScreen");
+    } else {
+      toast("비밀번호가 올바르지 않습니다.");
+    }
+  } catch (err) {
+    console.error(err);
+    toast("인증 설정을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.");
+  } finally {
+    btn.disabled = false;
   }
 });
 $("loginPw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("loginBtn").click(); });
@@ -822,8 +862,20 @@ $("changeEvaluatorBtn").addEventListener("click", () => {
 });
 
 // ===== 관리자 PIN =====
-$("adminPinBtn").addEventListener("click", () => {
-  if ($("adminPin").value !== ADMIN_PIN) { toast("PIN이 올바르지 않습니다."); return; }
+$("adminPinBtn").addEventListener("click", async () => {
+  const btn = $("adminPinBtn");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  let ok = false;
+  try {
+    ok = await verifyPassword($("adminPin").value, "admin");
+  } catch (err) {
+    console.error(err);
+    toast("인증 설정을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.");
+    btn.disabled = false;
+    return;
+  }
+  if (!ok) { toast("PIN이 올바르지 않습니다."); btn.disabled = false; return; }
   loadCurrentRound().then(() => {
     if (!currentRound) {
       // 회차가 한 번도 없었으면 → 첫 회차 시작 화면으로
@@ -834,6 +886,8 @@ $("adminPinBtn").addEventListener("click", () => {
   }).catch(err => {
     console.error(err);
     toast("회차 정보를 불러오지 못했습니다.");
+  }).finally(() => {
+    btn.disabled = false;
   });
 });
 $("adminPin").addEventListener("keydown", (e) => { if (e.key === "Enter") $("adminPinBtn").click(); });
@@ -2169,6 +2223,8 @@ window.addEventListener("beforeunload", (e) => {
 
 // 시작
 showOnly("loginScreen");
+// 인증 설정 미리 로드 (첫 로그인 클릭이 즉시 반응하도록)
+loadAuthConfig().catch(err => console.warn("auth config 선로드 실패:", err));
 
 } // ===== bootMain 끝 =====
 </script>
