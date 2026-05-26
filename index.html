@@ -224,7 +224,9 @@
     <p class="subtitle">아래에서 모드를 선택하세요.</p>
     <button id="goEvalBtn">평가하기</button>
     <div style="height:8px"></div>
-    <button id="goAdminBtn" class="secondary">관리자 모드</button>
+    <button id="goResultsBtn" class="secondary">결과 보기</button>
+    <div style="height:8px"></div>
+    <button id="goAdminBtn" class="ghost">관리자 모드</button>
   </div>
 
   <!-- 평가자 이름 입력 화면 (회차 시작 시 한 번만) -->
@@ -341,6 +343,7 @@
           <button id="newRoundBtn" class="secondary" style="flex:1;">새 회차 시작</button>
           <button id="lockToggleBtn" class="danger" style="flex:1;display:none;">회차 잠그기</button>
         </div>
+        <button id="openResultsFromAdminBtn" style="margin-top:8px;display:none;">📊 결과 화면 열기</button>
         <div id="liveStatusBox" style="margin-top:12px;padding:10px 12px;background:#fff;border-radius:8px;font-size:13px;display:none;"></div>
       </div>
 
@@ -431,6 +434,30 @@
         <p class="hint">현재 회차에 등장한 평가자 이름을 공백 무시 정규화 키로 묶어서 보여줍니다. 표기가 다른 동일 인물을 발견하면 한 이름으로 통합하세요.</p>
         <div id="evaluatorList" class="editor-list"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- 결과 보기 (공개) 화면 -->
+  <div id="resultsScreen" class="hidden">
+    <div class="card">
+      <div class="header-row">
+        <h2>심의 결과</h2>
+        <button class="ghost" id="resultsBack" style="width:auto;">← 뒤로</button>
+      </div>
+      <label for="resultsRoundSel">회차 선택</label>
+      <select id="resultsRoundSel">
+        <option value="">— 회차를 선택하세요 —</option>
+      </select>
+      <p id="resultsEmpty" class="empty hidden" style="padding:14px 0;">
+        공개된 결과가 없습니다.<br>회차가 종료(잠금) 처리된 후 결과가 공개됩니다.
+      </p>
+      <div id="resultsMeta" style="margin-top:14px;display:none;">
+        <div id="resultsRoundLabel" style="font-weight:700;font-size:18px;color:#2d3748;"></div>
+        <div id="resultsRespondents" style="font-size:13px;color:#718096;margin-top:4px;"></div>
+      </div>
+    </div>
+    <div class="card hidden" id="resultsListCard">
+      <div id="resultsList"></div>
     </div>
   </div>
 
@@ -615,7 +642,7 @@ const $ = (id) => document.getElementById(id);
 function show(id) { $(id).classList.remove("hidden"); }
 function hide(id) { $(id).classList.add("hidden"); }
 function showOnly(id) {
-  ["loginScreen","homeScreen","evaluatorEntryScreen","evalScreen","submittedScreen","adminPinScreen","adminScreen","newRoundScreen"].forEach(s =>
+  ["loginScreen","homeScreen","evaluatorEntryScreen","evalScreen","submittedScreen","adminPinScreen","adminScreen","newRoundScreen","resultsScreen"].forEach(s =>
     s === id ? show(s) : hide(s)
   );
   window.scrollTo(0, 0);
@@ -801,6 +828,9 @@ $("goEvalBtn").addEventListener("click", () => {
   });
 });
 $("goAdminBtn").addEventListener("click", () => { $("adminPin").value = ""; showOnly("adminPinScreen"); });
+$("goResultsBtn").addEventListener("click", () => { openResultsScreen(); });
+$("resultsBack").addEventListener("click", () => { showOnly("homeScreen"); });
+$("openResultsFromAdminBtn").addEventListener("click", () => { openResultsScreen(); });
 $("evalBack").addEventListener("click", () => {
   // 작성 중인 평가가 있으면 한 번 더 확인
   if (hasFormInProgress()) {
@@ -905,6 +935,7 @@ function renderCurrentRoundBox() {
     $("currentRoundLabel").textContent = "—";
     $("currentRoundMeta").textContent = "회차가 시작되지 않았습니다.";
     $("lockToggleBtn").style.display = "none";
+    $("openResultsFromAdminBtn").style.display = "none";
     $("liveStatusBox").style.display = "none";
     return;
   }
@@ -916,9 +947,11 @@ function renderCurrentRoundBox() {
   if (currentRound.locked) {
     $("lockToggleBtn").textContent = "회차 잠금 해제";
     $("lockToggleBtn").className = "secondary";
+    $("openResultsFromAdminBtn").style.display = "";
   } else {
     $("lockToggleBtn").textContent = "회차 잠그기";
     $("lockToggleBtn").className = "danger";
+    $("openResultsFromAdminBtn").style.display = "none";
   }
   $("liveStatusBox").style.display = "";
 }
@@ -1725,6 +1758,118 @@ $("historyDeleteBtn").addEventListener("click", () => {
     loadHistoryRoundList();
   });
 });
+
+// ===== 공개 결과 화면 (평가자도 조회 가능) =====
+// 잠긴 회차만 노출. 평가자 이름은 공개하지 않음 (익명 집계).
+function openResultsScreen() {
+  showOnly("resultsScreen");
+  $("resultsRoundSel").innerHTML = '<option value="">— 회차를 선택하세요 —</option>';
+  $("resultsEmpty").classList.add("hidden");
+  $("resultsMeta").style.display = "none";
+  $("resultsListCard").classList.add("hidden");
+  $("resultsList").innerHTML = "";
+  loadPublicResultsRoundList();
+}
+
+function loadPublicResultsRoundList() {
+  db.ref("rounds").once("value").then(snap => {
+    const data = snap.val() || {};
+    const ids = Object.keys(data);
+    // 잠긴 회차만 공개. 시작 시각 내림차순.
+    const locked = ids
+      .filter(id => data[id] && data[id].locked === true)
+      .sort((a, b) => (data[b]?.startedAt || 0) - (data[a]?.startedAt || 0));
+    if (locked.length === 0) {
+      $("resultsEmpty").classList.remove("hidden");
+      return;
+    }
+    const sel = $("resultsRoundSel");
+    locked.forEach(id => {
+      const r = data[id] || {};
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = r.label || "(이름 없음)";
+      sel.appendChild(opt);
+    });
+    // 기본값: 가장 최근 잠긴 회차 자동 선택
+    sel.value = locked[0];
+    renderPublicResults(locked[0], data[locked[0]] || {});
+  }).catch(err => {
+    console.error(err);
+    toast("회차 목록을 불러오지 못했습니다.");
+  });
+}
+
+$("resultsRoundSel").addEventListener("change", () => {
+  const rid = $("resultsRoundSel").value;
+  if (!rid) {
+    $("resultsMeta").style.display = "none";
+    $("resultsListCard").classList.add("hidden");
+    $("resultsList").innerHTML = "";
+    return;
+  }
+  db.ref("rounds/" + rid).once("value").then(snap => {
+    renderPublicResults(rid, snap.val() || {});
+  }).catch(err => {
+    console.error(err);
+    toast("결과를 불러오지 못했습니다.");
+  });
+});
+
+function renderPublicResults(rid, roundData) {
+  // 잠기지 않은 회차는 절대 노출하지 않음 (방어)
+  if (!roundData || roundData.locked !== true) {
+    $("resultsMeta").style.display = "none";
+    $("resultsListCard").classList.add("hidden");
+    $("resultsList").innerHTML = "";
+    toast("이 회차는 아직 공개되지 않았습니다.");
+    return;
+  }
+  $("resultsRoundLabel").textContent = roundData.label || "(이름 없음)";
+  const evalsObj = roundData.evaluations || {};
+  const evals = Object.values(evalsObj);
+  const respondents = new Set(
+    evals.map(e => normalizeEvaluator(e.evaluator || ""))
+  );
+  const totalPeers = Object.keys(roundData.evaluatees || {}).length;
+  $("resultsRespondents").textContent =
+    `평가자 ${respondents.size}명 · 피평가자 ${totalPeers}명 · 총 ${evals.length}건 제출`;
+  $("resultsMeta").style.display = "";
+
+  const { rows } = computeRanking(evals);
+  $("resultsListCard").classList.remove("hidden");
+  renderPublicRanking($("resultsList"), rows);
+}
+
+function renderPublicRanking(listEl, rows) {
+  if (!rows || rows.length === 0) {
+    listEl.innerHTML = '<div class="empty">제출된 평가가 없습니다.</div>';
+    return;
+  }
+  listEl.innerHTML = "";
+  rows.forEach((r, idx) => {
+    const rank = idx + 1;
+    const badgeClass = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
+    const det = document.createElement("details");
+    // 1~3위는 기본 펼침 (프로젝터 가독성)
+    if (rank <= 3) det.open = true;
+    det.innerHTML = `
+      <summary>
+        <span class="rank-badge ${badgeClass}">${rank}</span>
+        <strong>${escapeHtml(r.name || "")}</strong>
+        <span style="float:right;" class="stat-score">${r.totalAvg.toFixed(2)}</span>
+      </summary>
+      <table class="detail-table">
+        <thead><tr><th>항목</th><th>평균</th></tr></thead>
+        <tbody>
+          ${ITEMS.map(it => `<tr><td>${it.label}</td><td>${r.itemAvgs[it.key].toFixed(2)}</td></tr>`).join("")}
+          <tr><td><strong>총점 평균</strong></td><td><strong>${r.totalAvg.toFixed(2)}</strong> / 35</td></tr>
+        </tbody>
+      </table>
+    `;
+    listEl.appendChild(det);
+  });
+}
 
 // 순위 계산 공통 함수 (현재/지난 회차 모두에서 사용)
 function computeRanking(evals) {
