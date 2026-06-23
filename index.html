@@ -602,6 +602,13 @@ let _authConfigCache = null;
 let _authConfigPromise = null;
 
 async function sha256Hex(text) {
+  // crypto.subtle 은 HTTPS(또는 localhost) 보안 컨텍스트에서만 제공됨.
+  // 평문 HTTP(또는 일부 file://)로 접속하면 undefined → 해시 불가.
+  if (!window.crypto || !crypto.subtle) {
+    const e = new Error("crypto.subtle 사용 불가 (보안 컨텍스트 아님)");
+    e.code = "insecure_context";
+    throw e;
+  }
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -620,11 +627,36 @@ function loadAuthConfig() {
 }
 async function verifyPassword(input, which) {
   // which: "access" | "admin"
-  const cfg = await loadAuthConfig();
+  let cfg;
+  try {
+    cfg = await loadAuthConfig();
+  } catch (err) {
+    // /config 읽기 자체가 실패 — 네트워크 또는 RTDB 보안 규칙(read 거부).
+    const e = new Error("auth config 로드 실패");
+    e.code = "config_load_failed";
+    e.cause = err;
+    throw e;
+  }
   const expected = which === "admin" ? cfg.adminPinHash : cfg.accessPwHash;
-  if (!expected) throw new Error("auth config 누락 (" + which + ")");
+  if (!expected) {
+    // /config 는 읽혔지만 해시 키가 없음 — Firebase 에 비밀번호가 설정되지 않음.
+    const e = new Error("auth config 누락 (" + which + ")");
+    e.code = "config_missing";
+    throw e;
+  }
   const got = await sha256Hex(AUTH_SALT + (input || ""));
   return got === expected;
+}
+// 인증 실패 원인별로 사용자에게 보여줄 안내 메시지를 고른다.
+function authErrorMessage(err) {
+  const code = err && err.code;
+  if (code === "config_missing")
+    return "서버에 비밀번호가 설정되지 않았습니다. 관리자에게 문의하세요.";
+  if (code === "insecure_context")
+    return "보안 연결(https)에서만 로그인할 수 있습니다. https 주소로 다시 접속해주세요.";
+  if (code === "config_load_failed")
+    return "인증 설정을 불러오지 못했습니다. 네트워크 상태를 확인하고 새로고침 후 다시 시도해주세요.";
+  return "인증 설정을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.";
 }
 
 const ITEMS = [
@@ -784,7 +816,7 @@ $("loginBtn").addEventListener("click", async () => {
     }
   } catch (err) {
     console.error(err);
-    toast("인증 설정을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.");
+    toast(authErrorMessage(err));
   } finally {
     btn.disabled = false;
   }
@@ -901,7 +933,7 @@ $("adminPinBtn").addEventListener("click", async () => {
     ok = await verifyPassword($("adminPin").value, "admin");
   } catch (err) {
     console.error(err);
-    toast("인증 설정을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.");
+    toast(authErrorMessage(err));
     btn.disabled = false;
     return;
   }
